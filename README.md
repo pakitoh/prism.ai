@@ -38,6 +38,7 @@ An AI-powered observability investigation assistant. Feed it a metric anomaly, a
 - **Signal correlation** — autonomously chains metric → log → trace queries rather than forcing you to pivot between tools manually
 - **Growing memory** — past investigations are embedded in pgvector; recurring failure patterns surface their own history
 - **Alert-driven (Phase 3)** — Alertmanager fires a Kafka event; prism.ai picks it up, investigates, and delivers a report
+- **Remote MCP server (Phase 4)** — runs in the cloud with access to the company stack; developers connect Claude Code or Claude Desktop from their laptops and investigate in natural language
 
 ## 🤖 AI Design
 
@@ -55,9 +56,9 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
          ▼
     Claude reasons
          │
-         ├─ query_metrics(PromQL, window)     → Prometheus via Grafana MCP
-         ├─ search_logs(LogQL, window)        → Loki via Grafana MCP
-         ├─ get_trace(traceId)                → Tempo via Grafana MCP
+         ├─ query_metrics(PromQL, window)     → Prometheus HTTP API
+         ├─ search_logs(LogQL, window)        → Loki HTTP API
+         ├─ get_trace(traceId)                → Tempo HTTP API
          └─ search_past_investigations(text)  → pgvector knowledge base
          │
          ▼  (loop until conclusion or step limit)
@@ -106,10 +107,11 @@ Services after startup:
 | Layer | Technology |
 |---|---|
 | Observability | Prometheus · Loki · Tempo · Grafana · OpenTelemetry Collector |
-| MCP data access | [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana) |
+| Observability APIs | Prometheus HTTP · Loki HTTP · Tempo HTTP |
 | LLM | Claude (Anthropic SDK for Java) |
 | Vector memory | PostgreSQL + pgvector |
 | Event bus | Kafka (KRaft) + Schema Registry |
+| MCP interface | MCP Java SDK — SSE/HTTP transport |
 | Application | Java 21 · Maven · Spring Boot |
 
 
@@ -119,8 +121,8 @@ Services after startup:
 ```
 prism-domain/          Domain model — pure Java, zero framework deps
 prism-application/     Use cases and port interfaces
-prism-adapters-in/     Inbound adapters: REST, Kafka consumer, CLI
-prism-adapters-out/    Outbound adapters: Grafana MCP, Claude, Postgres, pgvector
+prism-adapters-in/     Inbound adapters: REST, MCP server, Kafka consumer
+prism-adapters-out/    Outbound adapters: Claude, Prometheus, Loki, Tempo, Postgres, pgvector
 prism-boot/            Spring Boot wiring and configuration
 ```
 
@@ -133,7 +135,7 @@ See [PLAN.md](PLAN.md) for implementation phases.
 Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, Kafka, or Claude — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
 
 ```
-         REST / Kafka / CLI
+  REST / MCP server (SSE) / Kafka
                │
         [Inbound Adapters]
                │
@@ -143,7 +145,7 @@ Hexagonal architecture with a clean domain core. The investigation domain has no
                │
        [Outbound Port Interfaces]
                │
-   Grafana MCP · Claude · Postgres · pgvector
+   Claude · Prometheus · Loki · Tempo · Postgres · pgvector
 ```
 
 ## 🤝 Contributing
