@@ -45,7 +45,7 @@ Conclusion`) is the model-agnostic vocabulary crossing the `ReasoningPort` bound
 - `PrometheusAdapter` implements `MetricsPort` via Prometheus HTTP API (`/api/v1/query_range`)
 - `LokiAdapter` implements `LogsPort` via Loki HTTP API (`/loki/api/v1/query_range`)
 - `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`)
-- `AnthropicReasoningAdapter` implements `ReasoningPort` via the Anthropic Java SDK; maps the model's tool-use response to a `ReasoningStep`. Model id is configuration-driven, never hardcoded. The loop itself stays in `InvestigationService`.
+- `SpringAiReasoningAdapter` implements `ReasoningPort` via Spring AI, with **internal tool execution disabled** (`ToolCallingChatOptions.internalToolExecutionEnabled(false)`) so the model's tool choice is returned to the loop rather than executed by the framework. A pure `ReasoningStepMapper` translates the tool call into a `ReasoningStep`. Provider and model id are configuration-driven; the loop stays in `InvestigationService`.
 - `PostgresInvestigationRepository` persists Investigation aggregates
 
 ### 1.5 Inbound adapter
