@@ -46,7 +46,9 @@ An AI-powered observability investigation assistant. Feed it a metric anomaly, a
 
 A conventional RAG pipeline retrieves documents before the model reasons. That works well for knowledge bases and documentation search, but it's the wrong abstraction for incident investigation: you don't know which metrics to pull until you've seen the alert context, and you don't know which trace to fetch until you've seen the metric spike. The investigation is inherently sequential and context-dependent.
 
-prism.ai uses **agentic tool-use** instead. Claude reasons over the current context, decides which tool to call next, executes it, incorporates the result, and continues until it reaches a conclusion. Each step informs the next.
+prism.ai uses **agentic tool-use** instead. The application drives a loop: it asks the model for the next step given the context so far, executes that step, incorporates the result, and continues until the model reaches a conclusion. Each step informs the next.
+
+The loop itself is core business logic and lives in the application layer, not in the model adapter. The model only decides *one step at a time* — gather a specific piece of evidence, or conclude — and the application orchestrates everything else. The model and provider are configuration-driven (Anthropic Claude by default).
 
 ### Investigation loop
 
@@ -54,18 +56,20 @@ prism.ai uses **agentic tool-use** instead. Claude reasons over the current cont
 InvestigationRequest  (alert · free-text query · metric anomaly)
          │
          ▼
-    Claude reasons
+    next step? ◀─────────────────────────┐   (model decides one step)
+         │                               │
+         ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ─┐
+         ├─ SearchLogs(LogQL, window)    → Loki HTTP API ───────┤
+         ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤ record Signal
+         ├─ SearchTraces(service, win)   → Tempo HTTP API ───────┘   then loop
+         │                               │
+         └─ Conclusion ─────────────────────────────────────────▶ done
          │
-         ├─ query_metrics(PromQL, window)     → Prometheus HTTP API
-         ├─ search_logs(LogQL, window)        → Loki HTTP API
-         ├─ get_trace(traceId)                → Tempo HTTP API
-         └─ search_past_investigations(text)  → pgvector knowledge base
-         │
-         ▼  (loop until conclusion or step limit)
+         ▼
     Finding  (root cause · supporting evidence · recommended action)
 ```
 
-The model chains tool calls autonomously. A typical investigation might: detect an error rate spike → pull correlated logs → find an exemplar trace → identify the failing span and dependency. No manual pivoting between dashboards.
+A typical investigation: detect an error-rate spike → pull correlated logs → find an exemplar trace → identify the failing span and dependency. No manual pivoting between dashboards. A step limit guarantees the loop always terminates.
 
 ### Growing memory
 
@@ -108,7 +112,7 @@ Services after startup:
 |---|---|
 | Observability | Prometheus · Loki · Tempo · Grafana · OpenTelemetry Collector |
 | Observability APIs | Prometheus HTTP · Loki HTTP · Tempo HTTP |
-| LLM | Claude (Anthropic SDK for Java) |
+| LLM | Anthropic Claude by default (provider/model configurable) |
 | Vector memory | PostgreSQL + pgvector |
 | Event bus | Kafka (KRaft) + Schema Registry |
 | MCP interface | MCP Java SDK — SSE/HTTP transport |

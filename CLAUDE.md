@@ -16,7 +16,7 @@ See [README.md](README.md) for stack overview and [PLAN.md](PLAN.md) for impleme
 prism-domain        — pure Java 21; zero framework dependencies
 prism-application   — use cases and port interfaces; depends only on domain
 prism-adapters-in   — REST, MCP server, Kafka consumer; depends on application
-prism-adapters-out  — Claude, Prometheus, Loki, Tempo, Postgres, pgvector; depends on application
+prism-adapters-out  — model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector; depends on application
 prism-boot          — Spring Boot wiring; depends on all adapter modules
 ```
 
@@ -34,7 +34,7 @@ prism-boot          — Spring Boot wiring; depends on all adapter modules
 - **Java 21** — use records for value objects, sealed interfaces for domain enums with behaviour, pattern matching where it reduces noise
 - **Maven multi-module** — BOM-managed dependencies; no version numbers scattered across child POMs
 - **Spring Boot** (boot module only) — no `@Component`, `@Service`, or `@Repository` in `prism-domain` or `prism-application`
-- **Anthropic Java SDK** — use for Claude tool-use loop in `ClaudeAdapter`; always use the latest Claude model from the SDK, do not hardcode a model string in domain code
+- **Model is provider- and config-driven** — no provider or model name appears in the domain, application, or port names. The reasoning port is `ReasoningPort`; its adapter is named by provider (e.g. `AnthropicReasoningAdapter`) and reads the model id from configuration. Swapping models is a config change; swapping providers is a new adapter. Default provider is Anthropic via the Anthropic Java SDK.
 - **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly (`/api/v1/query_range`, `/loki/api/v1/query_range`, `/api/traces/{id}`); do not introduce grafana-mcp as a runtime dependency
 - **MCP Java SDK** — used in `McpServerAdapter` (inbound) to expose prism.ai's investigation tools over SSE/HTTP transport; this makes prism.ai a remote MCP server that Claude Code and Claude Desktop can connect to
 - **pgvector via JDBC** — no ORM for vector operations; write plain SQL for similarity search queries
@@ -61,14 +61,28 @@ Every module must have tests. The bar is:
 
 ## Investigation loop
 
-The core of the application is the Claude tool-use loop in `ClaudeAdapter`. The model:
+The investigation loop is the core of the business, so it lives in the application
+layer (`InvestigationService`), inside the hexagon — not in any adapter.
 
-1. Receives an `InvestigationContext` (initial request + any accumulated signals)
-2. Calls one or more tools: `query_metrics`, `search_logs`, `get_trace`, `search_past_investigations`
-3. Each tool result is added to the context as a `Signal`
-4. The loop continues until Claude emits a `Finding` (conclusion) or a max-step limit is reached
+The split of responsibility:
 
-Keep this loop in `ClaudeAdapter` — it is an infrastructure concern. The application layer only calls `LlmPort.investigate(context)` and receives a `Finding`; it does not know about tool calls or model internals.
+- **`ReasoningPort.nextStep(context)`** decides the *single* next step given the
+  investigation so far: gather a specific piece of evidence, or conclude. This is
+  the only part that knows a provider's tool-use protocol; it is implemented by an
+  adapter and returns a `ReasoningStep`.
+- **`InvestigationService`** owns the loop. It repeatedly asks for the next step,
+  dispatches tool requests to the telemetry ports (`MetricsPort`, `LogsPort`,
+  `TracingPort`), records each `Signal` on the aggregate, and ends when a
+  `Conclusion` arrives or the `maxSteps` bound is hit.
+
+```
+ReasoningStep (sealed):
+  QueryMetrics | SearchLogs | GetTrace | SearchTraces  → dispatched to a telemetry port
+  Conclusion(Finding)                                  → ends the loop
+```
+
+The adapter never sees the loop; the application never sees tool-use JSON or which
+model is configured. `maxSteps` guarantees termination.
 
 ---
 

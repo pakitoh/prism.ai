@@ -27,19 +27,25 @@ InvestigationStatus    — PENDING | IN_PROGRESS | CONCLUDED | FAILED
 ### 1.3 Outbound port interfaces
 
 ```java
-MetricsPort       — queryRange(PromQL, from, to)
-LogsPort          — search(LogQL, from, to)
-TracingPort       — getTrace(traceId), searchTraces(service, from, to)
-LlmPort           — investigate(InvestigationContext) → Finding
+MetricsPort       — queryRange(PromQL, window) → Signal
+LogsPort          — search(LogQL, window) → Signal
+TracingPort       — getTrace(traceId), searchTraces(service, window) → Signal
+ReasoningPort     — nextStep(InvestigationContext) → ReasoningStep (a tool request, or a conclusion)
 InvestigationRepository — persist / load Investigation aggregates
 ```
+
+The investigation loop lives in `InvestigationService` (application layer), not in
+any adapter. The service drives the steps, dispatches tool requests to the telemetry
+ports, records signals, and stops on a conclusion or the `maxSteps` bound. The
+`ReasoningStep` sealed type (`QueryMetrics | SearchLogs | GetTrace | SearchTraces |
+Conclusion`) is the model-agnostic vocabulary crossing the `ReasoningPort` boundary.
 
 ### 1.4 Adapters
 
 - `PrometheusAdapter` implements `MetricsPort` via Prometheus HTTP API (`/api/v1/query_range`)
 - `LokiAdapter` implements `LogsPort` via Loki HTTP API (`/loki/api/v1/query_range`)
 - `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`)
-- `ClaudeAdapter` implements `LlmPort` via the Anthropic Java SDK; owns the tool-use loop
+- `AnthropicReasoningAdapter` implements `ReasoningPort` via the Anthropic Java SDK; maps the model's tool-use response to a `ReasoningStep`. Model id is configuration-driven, never hardcoded. The loop itself stays in `InvestigationService`.
 - `PostgresInvestigationRepository` persists Investigation aggregates
 
 ### 1.5 Inbound adapter
