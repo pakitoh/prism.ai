@@ -25,7 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
  * single next step and returns its tool choice to the application loop rather
  * than executing it here. Each instance targets one model id (supplied by
  * configuration, overriding the provider default per call); compose several
- * instances with {@link FallbackReasoningPort} for primary/fallback selection.
+ * instances with {@link ChainedRea
+ * soningPort} for primary/fallback selection.
  */
 public class SpringAiReasoningAdapter implements ReasoningPort {
 

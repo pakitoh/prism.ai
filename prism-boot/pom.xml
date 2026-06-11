@@ -36,6 +36,14 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- OpenAI model module: used to build a Groq (OpenAI-compatible) ChatModel
+             as a cross-provider fallback. Constructed manually in wiring — its
+             autoconfiguration stays off because the chat provider selector is google-genai. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+        </dependency>
+
         <!-- Observability: metrics, traces and logs exported via OTLP to the collector.
              Actuator + Micrometer Tracing provide the instrumentation; the exporters
              push OTLP (metrics via OTLP push since Prometheus only scrapes the collector). -->

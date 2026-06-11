@@ -22,11 +22,22 @@ spring:
 
 prism:
   reasoning:
-    # 'fallback' tries each model in order on failure. ('race' is a future strategy.)
+    # 'fallback' retries across the model list on failure. ('race' is a future strategy.)
     strategy: fallback
+    # Each reasoning step retries up to max-attempts, rotating to a different model
+    # (round-robin) on each error. Defaults to the number of models when unset.
+    max-attempts: ${PRISM_MAX_ATTEMPTS:4}
+    # NOTE: gemini-2.5-pro is NOT on the Gemini free tier (quota limit 0) — it needs a
+    # billing-enabled key. Defaults below are free-tier models; override with PRISM_MODEL.
     models:
-      - ${PRISM_MODEL:gemini-2.5-pro}   # primary
-      - gemini-2.5-flash                # fallback
+      - ${PRISM_MODEL:gemini-2.5-flash}   # primary (free-tier)
+      - gemini-2.0-flash                  # fallback (free-tier)
+    # Cross-provider fallback: Groq (OpenAI-compatible), tried after every Gemini model
+    # fails (e.g. a 429). Inactive unless GROQ_API_KEY is set.
+    groq:
+      api-key: ${GROQ_API_KEY:}
+      model: ${PRISM_GROQ_MODEL:llama-3.3-70b-versatile}
+      base-url: https://api.groq.com/openai
   telemetry:
     prometheus-url: ${PRISM_PROMETHEUS_URL:http://localhost:9090}
     loki-url: ${PRISM_LOKI_URL:http://localhost:3100}

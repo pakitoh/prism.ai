@@ -6,7 +6,7 @@ import ai.prism.adapters.out.observability.ObservedHttpExecutor;
 import ai.prism.adapters.out.observability.ObservedInvestigateUseCase;
 import ai.prism.adapters.out.observability.ObservedReasoningPort;
 import ai.prism.adapters.out.persistence.PostgresInvestigationRepository;
-import ai.prism.adapters.out.reasoning.FallbackReasoningPort;
+import ai.prism.adapters.out.reasoning.RetryingReasoningPort;
 import ai.prism.adapters.out.reasoning.SpringAiReasoningAdapter;
 import ai.prism.adapters.out.telemetry.LokiAdapter;
 import ai.prism.adapters.out.telemetry.PrometheusAdapter;
@@ -20,10 +20,14 @@ import ai.prism.application.port.out.TracingPort;
 import ai.prism.application.service.InvestigationService;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -68,16 +72,45 @@ public class PrismConfiguration {
     }
 
     @Bean
-    ReasoningPort reasoningPort(ChatModel chatModel, JsonMapper jsonMapper,
+    ReasoningPort reasoningPort(ChatModel geminiChatModel, JsonMapper jsonMapper,
                                 ReasoningProperties properties, ObservationRegistry observationRegistry) {
-        // One adapter per configured model id; an empty list means "provider default".
-        List<String> models = properties.models() == null || properties.models().isEmpty()
+        List<ReasoningPort> delegates = new ArrayList<>();
+
+        // Gemini delegates: one per configured model id (empty list = provider default).
+        List<String> geminiModels = properties.models() == null || properties.models().isEmpty()
                 ? Collections.singletonList(null)
                 : properties.models();
-        List<ReasoningPort> delegates = models.stream()
-                .map(model -> (ReasoningPort) new SpringAiReasoningAdapter(chatModel, jsonMapper, model))
-                .toList();
-        return new ObservedReasoningPort(new FallbackReasoningPort(delegates), observationRegistry);
+        for (String model : geminiModels) {
+            delegates.add(new SpringAiReasoningAdapter(geminiChatModel, jsonMapper, model));
+        }
+
+        // Cross-provider model: Groq (OpenAI-compatible) joins the rotation after the
+        // Gemini models — so a step rotates onto it when Gemini errors (e.g. a 429).
+        // Active only with a key.
+        ReasoningProperties.Groq groq = properties.groq();
+        if (groq != null && groq.apiKey() != null && !groq.apiKey().isBlank()) {
+            delegates.add(new SpringAiReasoningAdapter(buildGroqChatModel(groq), jsonMapper, groq.model()));
+        }
+
+        // Retry budget per step; default to one pass over the models when unset.
+        int maxAttempts = properties.maxAttempts() != null && properties.maxAttempts() > 0
+                ? properties.maxAttempts()
+                : delegates.size();
+        return new ObservedReasoningPort(new RetryingReasoningPort(delegates, maxAttempts), observationRegistry);
+    }
+
+    private static ChatModel buildGroqChatModel(ReasoningProperties.Groq groq) {
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(groq.baseUrl())
+                .apiKey(groq.apiKey())
+                .build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(groq.model())
+                .build();
+        return OpenAiChatModel.builder()
+                .openAiApi(api)
+                .defaultOptions(options)
+                .build();
     }
 
     @Bean
