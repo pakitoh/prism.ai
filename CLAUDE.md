@@ -38,6 +38,7 @@ prism-boot          — Spring Boot wiring; depends on all adapter modules
 - **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly (`/api/v1/query_range`, `/loki/api/v1/query_range`, `/api/traces/{id}`); do not introduce grafana-mcp as a runtime dependency
 - **MCP Java SDK** — used in `McpServerAdapter` (inbound) to expose prism.ai's investigation tools over SSE/HTTP transport; this makes prism.ai a remote MCP server that Claude Code and Claude Desktop can connect to
 - **pgvector via JDBC** — no ORM for vector operations; write plain SQL for similarity search queries
+- **Self-observability** — the app exports its own metrics, traces and logs via OTLP to the collector (→ Tempo / Prometheus / Loki). Baseline comes from Actuator + Micrometer Tracing (HTTP-server spans, JVM metrics, Spring AI model-call spans); domain-specific instrumentation lives in `Observed*` decorators in `ai.prism.adapters.out.observability`, wired at the composition root. Never put Micrometer/observation code in the domain or application layers — instrument with decorators that wrap the ports.
 
 ---
 

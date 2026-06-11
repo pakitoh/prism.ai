@@ -4,8 +4,6 @@ import ai.prism.application.port.out.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
 import ai.prism.application.reasoning.ReasoningStep;
 import ai.prism.domain.investigation.Signal;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,6 +15,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@link ReasoningPort} backed by Spring AI.
@@ -43,7 +43,7 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
             """;
 
     private final ChatModel chatModel;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
     private final String model;
     private final ReasoningStepMapper stepMapper;
     private final List<ToolCallback> tools;
@@ -52,9 +52,9 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
      * @param model the model id to target per call, or {@code null}/blank to use
      *              the provider's configured default
      */
-    public SpringAiReasoningAdapter(ChatModel chatModel, ObjectMapper objectMapper, String model) {
+    public SpringAiReasoningAdapter(ChatModel chatModel, JsonMapper jsonMapper, String model) {
         this.chatModel = Objects.requireNonNull(chatModel, "chatModel must not be null");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.jsonMapper = Objects.requireNonNull(jsonMapper, "objectMapper must not be null");
         this.model = model;
         this.stepMapper = new ReasoningStepMapper();
         this.tools = ReasoningTools.all();
@@ -83,7 +83,7 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
 
     private Map<String, Object> parseArguments(String json) {
         try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            return jsonMapper.readValue(json, new TypeReference<Map<String, Object>>() {
             });
         } catch (Exception malformed) {
             throw new ReasoningException("Could not parse tool arguments: " + json, malformed);

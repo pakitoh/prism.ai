@@ -11,8 +11,9 @@ import ai.prism.domain.investigation.RequestSource;
 import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.SignalType;
 import ai.prism.domain.investigation.TimeWindow;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -54,11 +55,11 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
             """;
 
     private final DataSource dataSource;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
 
-    public PostgresInvestigationRepository(DataSource dataSource, ObjectMapper objectMapper) {
+    public PostgresInvestigationRepository(DataSource dataSource, JsonMapper jsonMapper) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.jsonMapper = Objects.requireNonNull(jsonMapper, "objectMapper must not be null");
     }
 
     @Override
@@ -143,7 +144,7 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
                 .map(s -> new SignalRow(s.type().name(), s.query(), s.content(), s.observedAt().toString()))
                 .toList();
         try {
-            return objectMapper.writeValueAsString(rows);
+            return jsonMapper.writeValueAsString(rows);
         } catch (Exception failure) {
             throw new PersistenceException("Failed to serialize signals", failure);
         }
@@ -151,7 +152,7 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
 
     private List<Signal> readSignals(String json) {
         try {
-            List<SignalRow> rows = objectMapper.readValue(json, new TypeReference<List<SignalRow>>() {
+            List<SignalRow> rows = jsonMapper.readValue(json, new TypeReference<List<SignalRow>>() {
             });
             return rows.stream()
                     .map(r -> new Signal(SignalType.valueOf(r.type()), r.query(), r.content(), Instant.parse(r.observedAt())))

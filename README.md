@@ -117,6 +117,7 @@ Services after startup:
 | Event bus | Kafka (KRaft) + Schema Registry |
 | MCP interface | MCP Java SDK — SSE/HTTP transport |
 | Application | Java 21 · Maven · Spring Boot |
+| Self-observability | Micrometer + OpenTelemetry (OTLP) → its own Tempo · Prometheus · Loki |
 
 
 ---

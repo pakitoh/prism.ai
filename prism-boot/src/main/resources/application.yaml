@@ -35,3 +35,27 @@ prism:
     tempo-url: ${PRISM_TEMPO_URL:http://localhost:3200}
   investigation:
     max-steps: ${PRISM_MAX_STEPS:12}
+
+# Observability: export metrics, traces and logs via OTLP to the collector
+# (http://localhost:4318 from the host; otel-collector:4318 inside prism-net).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  tracing:
+    sampling:
+      probability: ${PRISM_TRACE_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/traces
+    metrics:
+      export:
+        url: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/metrics
+        step: 10s
+        # Micrometer's OTLP registry is separate from the trace/log resource,
+        # so set service.name explicitly to keep all three consistent.
+        resource-attributes:
+          service.name: ${spring.application.name}
+    logging:
+      endpoint: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/logs
