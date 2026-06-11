@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: prism-ai
+
+  datasource:
+    url: ${PRISM_DB_URL:jdbc:postgresql://localhost:5432/prism_db}
+    username: ${PRISM_DB_USER:postgres}
+    password: ${PRISM_DB_PASSWORD:postgres}
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/investigations-schema.sql
+
+  ai:
+    model:
+      chat: google-genai
+    google:
+      genai:
+        # Free Gemini Developer API key from https://aistudio.google.com/apikey
+        api-key: ${GEMINI_API_KEY:}
+
+prism:
+  reasoning:
+    # 'fallback' tries each model in order on failure. ('race' is a future strategy.)
+    strategy: fallback
+    models:
+      - ${PRISM_MODEL:gemini-2.5-pro}   # primary
+      - gemini-2.5-flash                # fallback
+  telemetry:
+    prometheus-url: ${PRISM_PROMETHEUS_URL:http://localhost:9090}
+    loki-url: ${PRISM_LOKI_URL:http://localhost:3100}
+    # NOTE: docker-compose does not publish Tempo's 3200 to the host yet — run
+    # the app inside the prism-net network, or add a host port mapping for Tempo.
+    tempo-url: ${PRISM_TEMPO_URL:http://localhost:3200}
+  investigation:
+    max-steps: ${PRISM_MAX_STEPS:12}

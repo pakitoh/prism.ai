@@ -23,8 +23,9 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
  *
  * <p>Internal tool execution is disabled, so each call asks the model for the
  * single next step and returns its tool choice to the application loop rather
- * than executing it here. The provider and model are chosen by configuration —
- * no provider or model name appears in this class.
+ * than executing it here. Each instance targets one model id (supplied by
+ * configuration, overriding the provider default per call); compose several
+ * instances with {@link FallbackReasoningPort} for primary/fallback selection.
  */
 public class SpringAiReasoningAdapter implements ReasoningPort {
 
@@ -43,24 +44,33 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
 
     private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
+    private final String model;
     private final ReasoningStepMapper stepMapper;
     private final List<ToolCallback> tools;
 
-    public SpringAiReasoningAdapter(ChatModel chatModel, ObjectMapper objectMapper) {
+    /**
+     * @param model the model id to target per call, or {@code null}/blank to use
+     *              the provider's configured default
+     */
+    public SpringAiReasoningAdapter(ChatModel chatModel, ObjectMapper objectMapper, String model) {
         this.chatModel = Objects.requireNonNull(chatModel, "chatModel must not be null");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.model = model;
         this.stepMapper = new ReasoningStepMapper();
         this.tools = ReasoningTools.all();
     }
 
     @Override
     public ReasoningStep nextStep(InvestigationContext context) {
+        var optionsBuilder = ToolCallingChatOptions.builder()
+                .toolCallbacks(tools)
+                .internalToolExecutionEnabled(false);
+        if (model != null && !model.isBlank()) {
+            optionsBuilder.model(model);
+        }
         Prompt prompt = new Prompt(
                 List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(renderUser(context))),
-                ToolCallingChatOptions.builder()
-                        .toolCallbacks(tools)
-                        .internalToolExecutionEnabled(false)
-                        .build());
+                optionsBuilder.build());
 
         ChatResponse response = chatModel.call(prompt);
         if (response == null || !response.hasToolCalls()) {

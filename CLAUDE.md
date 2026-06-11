@@ -2,7 +2,7 @@
 
 ## Project
 
-AI-powered observability investigation assistant. On-demand and alert-driven root-cause analysis over a Prometheus / Loki / Tempo / Grafana stack, backed by Claude tool-use and pgvector memory.
+AI-powered observability investigation assistant. On-demand and alert-driven root-cause analysis over a Prometheus / Loki / Tempo / Grafana stack, backed by LLM tool-use (Google Gemini by default) and pgvector memory.
 
 See [README.md](README.md) for stack overview and [PLAN.md](PLAN.md) for implementation phases.
 
@@ -34,7 +34,7 @@ prism-boot          — Spring Boot wiring; depends on all adapter modules
 - **Java 21** — use records for value objects, sealed interfaces for domain enums with behaviour, pattern matching where it reduces noise
 - **Maven multi-module** — BOM-managed dependencies; no version numbers scattered across child POMs
 - **Spring Boot** (boot module only) — no `@Component`, `@Service`, or `@Repository` in `prism-domain` or `prism-application`
-- **Model access via Spring AI; provider- and config-driven** — no provider or model name appears in the domain, application, or port names. The reasoning port is `ReasoningPort`, implemented by `SpringAiReasoningAdapter`. It runs Spring AI with **internal tool execution disabled** so the framework does not run the agentic loop — it only returns the model's single tool choice, which the application loop dispatches. Because Spring AI is a unified abstraction, both the model id and the provider are configuration changes (`spring.ai.anthropic.chat.options.model`, or a different starter), not code changes. Default provider is Anthropic Claude.
+- **Model access via Spring AI; provider- and config-driven** — no provider or model name appears in the domain, application, or port names. The reasoning port is `ReasoningPort`, implemented by `SpringAiReasoningAdapter`. It runs Spring AI with **internal tool execution disabled** so the framework does not run the agentic loop — it only returns the model's single tool choice, which the application loop dispatches. Because Spring AI is a unified abstraction, both the model id and the provider are configuration changes (the model-id list in `prism.reasoning.models`, or a different starter), not code changes. Default provider is Google Gemini (API-key auth). Multiple models are composed for resilience: `FallbackReasoningPort` wraps an ordered list of `SpringAiReasoningAdapter`s (primary first), each targeting one model id.
 - **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly (`/api/v1/query_range`, `/loki/api/v1/query_range`, `/api/traces/{id}`); do not introduce grafana-mcp as a runtime dependency
 - **MCP Java SDK** — used in `McpServerAdapter` (inbound) to expose prism.ai's investigation tools over SSE/HTTP transport; this makes prism.ai a remote MCP server that Claude Code and Claude Desktop can connect to
 - **pgvector via JDBC** — no ORM for vector operations; write plain SQL for similarity search queries

@@ -48,7 +48,7 @@ A conventional RAG pipeline retrieves documents before the model reasons. That w
 
 prism.ai uses **agentic tool-use** instead. The application drives a loop: it asks the model for the next step given the context so far, executes that step, incorporates the result, and continues until the model reaches a conclusion. Each step informs the next.
 
-The loop itself is core business logic and lives in the application layer, not in the model adapter. The model only decides *one step at a time* — gather a specific piece of evidence, or conclude — and the application orchestrates everything else. The model and provider are configuration-driven (Anthropic Claude by default).
+The loop itself is core business logic and lives in the application layer, not in the model adapter. The model only decides *one step at a time* — gather a specific piece of evidence, or conclude — and the application orchestrates everything else. The model and provider are configuration-driven (Google Gemini by default), with a configurable primary + fallback model list.
 
 ### Investigation loop
 
@@ -112,7 +112,7 @@ Services after startup:
 |---|---|
 | Observability | Prometheus · Loki · Tempo · Grafana · OpenTelemetry Collector |
 | Observability APIs | Prometheus HTTP · Loki HTTP · Tempo HTTP |
-| LLM | Anthropic Claude by default (provider/model configurable) |
+| LLM | Google Gemini by default · primary + fallback, provider/model configurable |
 | Vector memory | PostgreSQL + pgvector |
 | Event bus | Kafka (KRaft) + Schema Registry |
 | MCP interface | MCP Java SDK — SSE/HTTP transport |
@@ -126,7 +126,7 @@ Services after startup:
 prism-domain/          Domain model — pure Java, zero framework deps
 prism-application/     Use cases and port interfaces
 prism-adapters-in/     Inbound adapters: REST, MCP server, Kafka consumer
-prism-adapters-out/    Outbound adapters: Claude, Prometheus, Loki, Tempo, Postgres, pgvector
+prism-adapters-out/    Outbound adapters: model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector
 prism-boot/            Spring Boot wiring and configuration
 ```
 
@@ -136,7 +136,7 @@ See [PLAN.md](PLAN.md) for implementation phases.
 ---
 ### Architecture
 
-Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, Kafka, or Claude — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
+Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, Kafka, or the model — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
 
 ```
   REST / MCP server (SSE) / Kafka
@@ -149,7 +149,7 @@ Hexagonal architecture with a clean domain core. The investigation domain has no
                │
        [Outbound Port Interfaces]
                │
-   Claude · Prometheus · Loki · Tempo · Postgres · pgvector
+   model reasoning · Prometheus · Loki · Tempo · Postgres · pgvector
 ```
 
 ## 🤝 Contributing

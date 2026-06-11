@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>prism-adapters-out</artifactId>
-    <description>Outbound adapters: Claude, Prometheus, Loki, Tempo, Postgres, pgvector</description>
+    <description>Outbound adapters: model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector</description>
 
     <dependencies>
         <dependency>
@@ -20,10 +20,11 @@
         </dependency>
 
         <!-- Provider-neutral model access. The reasoning adapter calls the model
-             through Spring AI; the provider/model is chosen by configuration. -->
+             through Spring AI; the provider/model is chosen by configuration.
+             Default provider is Google Gemini (API-key auth via AI Studio). -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-anthropic</artifactId>
+            <artifactId>spring-ai-starter-model-google-genai</artifactId>
         </dependency>
 
         <dependency>

@@ -67,7 +67,7 @@ Simple REST endpoint: `POST /investigations` with an `InvestigationRequest` body
 
 ### 2.1 Storage
 
-Add `InvestigationEmbedding` table (pgvector). After each investigation concludes, embed the `(symptoms + conclusion)` text using Claude's embeddings and store it alongside the investigation ID.
+Add `InvestigationEmbedding` table (pgvector). After each investigation concludes, embed the `(symptoms + conclusion)` text using the model's embeddings (Gemini) and store it alongside the investigation ID.
 
 ### 2.2 Knowledge search port
 
@@ -79,7 +79,7 @@ KnowledgeSearchPort — findSimilarInvestigations(query: String, limit: int) →
 
 ### 2.3 Wire into the investigation flow
 
-The `ClaudeAdapter` tool-use loop gains a new tool: `search_past_investigations(query)`. The model calls it when it recognizes a pattern worth checking history for. Runbooks emerge from usage — no manual authoring required.
+The reasoning step set gains a new tool: `search_past_investigations(query)`. The model calls it when it recognizes a pattern worth checking history for. Runbooks emerge from usage — no manual authoring required.
 
 ---
 

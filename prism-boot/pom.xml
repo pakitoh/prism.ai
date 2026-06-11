@@ -22,5 +22,36 @@
             <groupId>ai.prism</groupId>
             <artifactId>prism-adapters-out</artifactId>
         </dependency>
+
+        <!-- Spring Boot runtime: app bootstrap + JDBC DataSource autoconfig.
+             Web (REST) comes transitively via prism-adapters-in; the Gemini
+             ChatModel autoconfig comes transitively via prism-adapters-out. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- Not using spring-boot-starter-parent, so bind repackage explicitly
+                     to produce an executable fat jar. -->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
