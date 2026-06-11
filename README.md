@@ -8,9 +8,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/java-21+-blue" alt="Java 21+">
-  <img src="https://img.shields.io/badge/license-GPLv3.0-green" alt="GPLv3 License">
+  <img src="https://img.shields.io/badge/java-25+-blue" alt="Java 21+">
+  <img src="https://img.shields.io/badge/SpringBoot-v4.1-green" alt="SpringBoot 4.1">
   <img src="https://img.shields.io/badge/docker-compose-blue" alt="Docker Compose">
+  <img src="https://img.shields.io/badge/license-GPLv3.0-green" alt="GPLv3 License">
 </p>
 
 ## 📋 Table of Contents
