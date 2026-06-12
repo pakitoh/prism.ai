@@ -59,10 +59,11 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
          ▼
     next step? ◀─────────────────────────┐   (model decides one step)
          │                               │
-         ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ─┐
-         ├─ SearchLogs(LogQL, window)    → Loki HTTP API ───────┤
-         ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤ record Signal
-         ├─ SearchTraces(service, win)   → Tempo HTTP API ───────┘   then loop
+         ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
+         ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
+         ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
+         ├─ SearchTraces(service, win)   → Tempo HTTP API ───────┤ record Signal
+         ├─ SearchPastInvestigations(q)  → pgvector memory ──────┘   then loop
          │                               │
          └─ Conclusion ─────────────────────────────────────────▶ done
          │
@@ -76,9 +77,11 @@ A typical investigation: detect an error-rate spike → pull correlated logs →
 
 Every completed investigation is embedded and stored in pgvector. When a similar failure recurs, the `search_past_investigations` tool surfaces relevant history — the original symptoms, the root cause, and what resolved it. Runbooks are not authored manually; they emerge from usage.
 
-### Agent observability
+### Self-observability
 
-Each investigation is traced in [Langfuse](https://langfuse.com): every tool call, model response, token count, and final conclusion is recorded and scoreable. This feedback loop is used to evaluate quality and validate investigation reasoning before enabling fully autonomous alert-driven runs.
+prism.ai instruments itself with OpenTelemetry and exports its own metrics, traces and logs (OTLP) to the very stack it investigates — Tempo, Prometheus and Loki. A single investigation produces a nested trace: the HTTP request → the investigation → each reasoning step and tool call. Per-investigation metrics (outcome, duration, step kinds, telemetry-query backends) come from `Observed*` decorators wrapping the ports, so the domain stays instrumentation-free.
+
+Agent-quality evaluation via [Langfuse](https://langfuse.com) — scoring each investigation's reasoning — is planned for a later phase.
 
 
 ## 🚀 Getting Started
@@ -113,11 +116,11 @@ Services after startup:
 |---|---|
 | Observability | Prometheus · Loki · Tempo · Grafana · OpenTelemetry Collector |
 | Observability APIs | Prometheus HTTP · Loki HTTP · Tempo HTTP |
-| LLM | Google Gemini by default · primary + fallback, provider/model configurable |
+| LLM | Google Gemini (default) + Groq cross-provider fallback · retry with model rotation · provider/model configurable |
 | Vector memory | PostgreSQL + pgvector |
 | Event bus | Kafka (KRaft) + Schema Registry |
 | MCP interface | MCP Java SDK — SSE/HTTP transport |
-| Application | Java 21 · Maven · Spring Boot |
+| Application | Java 25 · Maven · Spring Boot 4 |
 | Self-observability | Micrometer + OpenTelemetry (OTLP) → its own Tempo · Prometheus · Loki |
 
 

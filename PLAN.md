@@ -19,7 +19,7 @@ Multi-module layout: `prism-domain`, `prism-adapters-in`, `prism-adapters-out`, 
 ```
 Investigation          — aggregate root; owns the full investigation lifecycle
 InvestigationRequest   — value object; the starting point (alert, free-text query, metric spike)
-Signal                 — value object; a single telemetry data point (type: METRIC | LOG | TRACE)
+Signal                 — value object; a single observation (type: METRIC | LOG | TRACE | MEMORY)
 Finding                — value object; the model's interpretation of one or more signals
 InvestigationStatus    — PENDING | IN_PROGRESS | CONCLUDED | FAILED
 ```
@@ -38,7 +38,8 @@ The investigation loop lives in `InvestigationService` (application layer), not 
 any adapter. The service drives the steps, dispatches tool requests to the telemetry
 ports, records signals, and stops on a conclusion or the `maxSteps` bound. The
 `ReasoningStep` sealed type (`QueryMetrics | SearchLogs | GetTrace | SearchTraces |
-Conclusion`) is the model-agnostic vocabulary crossing the `ReasoningPort` boundary.
+SearchPastInvestigations | Conclusion`) is the model-agnostic vocabulary crossing the
+`ReasoningPort` boundary.
 
 ### 1.4 Adapters
 
@@ -47,6 +48,7 @@ Conclusion`) is the model-agnostic vocabulary crossing the `ReasoningPort` bound
 - `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`)
 - `SpringAiReasoningAdapter` implements `ReasoningPort` via Spring AI, with **internal tool execution disabled** (`ToolCallingChatOptions.internalToolExecutionEnabled(false)`) so the model's tool choice is returned to the loop rather than executed by the framework. A pure `ReasoningStepMapper` translates the tool call into a `ReasoningStep`. Provider and model id are configuration-driven; the loop stays in `InvestigationService`.
 - `PostgresInvestigationRepository` persists Investigation aggregates
+- **Reasoning resilience** (added later): `RetryingReasoningPort` wraps the per-model `SpringAiReasoningAdapter`s and retries each step up to `prism.reasoning.max-attempts`, rotating models on error — including a cross-provider Groq (OpenAI-compatible) fallback.
 
 ### 1.5 Inbound adapter
 
@@ -61,25 +63,29 @@ Simple REST endpoint: `POST /investigations` with an `InvestigationRequest` body
 
 ---
 
-## Phase 2 — Memory & Knowledge Base
+## Phase 2 — Memory & Knowledge Base (done)
 
 **Goal:** past investigations make future ones better. Recurring failure patterns surface their own history without manual runbook writing.
 
-### 2.1 Storage
+### 2.1 Port
 
-Add `InvestigationEmbedding` table (pgvector). After each investigation concludes, embed the `(symptoms + conclusion)` text using the model's embeddings (Gemini) and store it alongside the investigation ID.
-
-### 2.2 Knowledge search port
+`InvestigationKnowledgeBase` (in `prism-domain`):
 
 ```java
-KnowledgeSearchPort — findSimilarInvestigations(query: String, limit: int) → List<InvestigationSummary>
+remember(Investigation)      — store a concluded investigation
+findSimilar(query) → Signal  — recall similar past investigations as a MEMORY signal
 ```
 
-`PgVectorKnowledgeAdapter` implements it.
+Both are **best-effort** (never fail an investigation): `findSimilar` never throws; storing runs through a decorator that logs and swallows failures.
 
-### 2.3 Wire into the investigation flow
+### 2.2 Implementations (selected by `prism.knowledge.store`)
 
-The reasoning step set gains a new tool: `search_past_investigations(query)`. The model calls it when it recognizes a pattern worth checking history for. Runbooks emerge from usage — no manual authoring required.
+- `InMemoryInvestigationKnowledgeBase` — token-overlap ranking, in-process; for local dev (no DB/embeddings).
+- `PgVectorKnowledgeAdapter` (default) — embeds via a Spring AI `EmbeddingModel` (Gemini), stores in the `investigation_embeddings` pgvector table (unspecified `vector` dimension, so model-agnostic), searches by cosine distance. Plain JDBC/SQL. Embedding calls inherit Spring AI's retry (backoff, 429-aware) but have no model rotation.
+
+### 2.3 Wired into the flow
+
+The reasoning step set gains `SearchPastInvestigations` + the `search_past_investigations` tool (the system prompt encourages calling it early); the loop dispatches it to the knowledge base and records a `MEMORY` `Signal`. `RememberingInvestigateUseCase` (decorator) stores each concluded investigation. Runbooks emerge from usage — no manual authoring required.
 
 ---
 
