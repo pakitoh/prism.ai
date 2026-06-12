@@ -32,22 +32,20 @@ prism:
     model: ${PRISM_EMBEDDING_MODEL:text-embedding-004}
     base-url: ${PRISM_EMBEDDING_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
   reasoning:
-    # 'fallback' retries across the model list on failure. ('race' is a future strategy.)
-    strategy: fallback
-    # Each reasoning step retries up to max-attempts, rotating to a different model
-    # (round-robin) on each error. Defaults to the number of models when unset.
+    # Each reasoning step retries up to max-attempts, rotating to the next model on error.
+    # Defaults to the number of models when unset.
     max-attempts: ${PRISM_MAX_ATTEMPTS:4}
-    # NOTE: gemini-2.5-pro is NOT on the Gemini free tier (quota limit 0) — it needs a
-    # billing-enabled key. Defaults below are free-tier models; override with PRISM_MODEL.
+    # Ordered list — first entry is tried first. Entries with only 'id' use the
+    # auto-configured ChatModel (Spring AI starter). Entries with 'base-url' and 'api-key'
+    # target that OpenAI-compatible endpoint; both fields are required or startup fails.
+    # NOTE: gemini-2.5-pro is NOT on the free tier (quota 0) — needs a billing-enabled key.
     models:
-      - ${PRISM_MODEL:gemini-2.5-flash}   # primary (free-tier)
-      - gemini-2.0-flash                  # fallback (free-tier)
-    # Cross-provider fallback: Groq (OpenAI-compatible), tried after every Gemini model
-    # fails (e.g. a 429). Inactive unless GROQ_API_KEY is set.
-    groq:
-      api-key: ${GROQ_API_KEY:}
-      model: ${PRISM_GROQ_MODEL:llama-3.3-70b-versatile}
-      base-url: https://api.groq.com/openai
+      - id: ${PRISM_MODEL:gemini-2.5-flash}
+      - id: gemini-2.0-flash
+      # Example: add an OpenAI-compatible provider (e.g. Groq) as a further fallback:
+      # - id: llama-3.3-70b-versatile
+      #   api-key: ${GROQ_API_KEY}
+      #   base-url: https://api.groq.com/openai
   telemetry:
     prometheus-url: ${PRISM_PROMETHEUS_URL:http://localhost:9090}
     loki-url: ${PRISM_LOKI_URL:http://localhost:3100}

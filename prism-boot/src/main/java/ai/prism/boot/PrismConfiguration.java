@@ -27,7 +27,6 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.ai.chat.model.ChatModel;
@@ -83,37 +82,32 @@ public class PrismConfiguration {
     }
 
     @Bean
-    ReasoningPort reasoningPort(ChatModel geminiChatModel, JsonMapper jsonMapper,
+    ReasoningPort reasoningPort(ChatModel chatModel, JsonMapper jsonMapper,
                                 ReasoningProperties properties, ObservationRegistry observationRegistry) {
         List<ReasoningPort> delegates = new ArrayList<>();
 
-        // Gemini delegates: one per configured model id (empty list = provider default).
-        List<String> geminiModels = properties.models() == null || properties.models().isEmpty()
-                ? Collections.singletonList(null)
-                : properties.models();
-        for (String model : geminiModels) {
-            delegates.add(new SpringAiReasoningAdapter(geminiChatModel, jsonMapper, model));
+        List<ReasoningProperties.ModelConfig> models = properties.models();
+        if (models == null || models.isEmpty()) {
+            delegates.add(new SpringAiReasoningAdapter(chatModel, jsonMapper, null));
+        } else {
+            for (ReasoningProperties.ModelConfig config : models) {
+                boolean explicit = config.baseUrl() != null && !config.baseUrl().isBlank();
+                delegates.add(new SpringAiReasoningAdapter(
+                        explicit ? buildOpenAiCompatibleChatModel(config) : chatModel,
+                        jsonMapper, config.id()));
+            }
         }
 
-        // Cross-provider model: Groq (OpenAI-compatible) joins the rotation after the
-        // Gemini models — so a step rotates onto it when Gemini errors (e.g. a 429).
-        // Active only with a key.
-        ReasoningProperties.Groq groq = properties.groq();
-        if (groq != null && groq.apiKey() != null && !groq.apiKey().isBlank()) {
-            delegates.add(new SpringAiReasoningAdapter(buildGroqChatModel(groq), jsonMapper, groq.model()));
-        }
-
-        // Retry budget per step; default to one pass over the models when unset.
         int maxAttempts = properties.maxAttempts() != null && properties.maxAttempts() > 0
                 ? properties.maxAttempts()
                 : delegates.size();
         return new ObservedReasoningPort(new RetryingReasoningPort(delegates, maxAttempts), observationRegistry);
     }
 
-    private static ChatModel buildGroqChatModel(ReasoningProperties.Groq groq) {
+    private static ChatModel buildOpenAiCompatibleChatModel(ReasoningProperties.ModelConfig config) {
         return OpenAiChatModel.builder()
-                .openAiClient(openAiClient(groq.baseUrl(), groq.apiKey()))
-                .options(OpenAiChatOptions.builder().model(groq.model()).build())
+                .openAiClient(openAiClient(config.baseUrl(), config.apiKey()))
+                .options(OpenAiChatOptions.builder().model(config.id()).build())
                 .build();
     }
 

@@ -9,10 +9,9 @@ import org.springframework.ai.tool.function.FunctionToolCallback;
  * Declares the tools the model may call, with their input schemas derived from
  * the record types below.
  *
- * <p>The tool functions are never invoked: the adapter runs with Spring AI's
- * internal tool execution disabled, so the model's choice is returned to the
- * application loop rather than executed here. The {@code Function} bodies exist
- * only to satisfy the builder.
+ * <p>The {@code Function} bodies exist only to satisfy the builder API — they
+ * are never called because the application loop dispatches the model's tool
+ * choice, not the framework.
  */
 final class ReasoningTools {
 

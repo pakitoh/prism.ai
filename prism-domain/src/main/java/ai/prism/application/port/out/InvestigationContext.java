@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Input to {@link LlmPort#investigate}: the originating request plus any
+ * Input to {@link ReasoningPort#nextStep}: the originating request plus any
  * signals already accumulated (empty for a fresh investigation, non-empty
  * when resuming one).
  */
