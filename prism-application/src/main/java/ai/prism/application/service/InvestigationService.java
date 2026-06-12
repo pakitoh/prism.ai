@@ -2,6 +2,7 @@ package ai.prism.application.service;
 
 import ai.prism.application.port.in.InvestigateUseCase;
 import ai.prism.application.port.out.InvestigationContext;
+import ai.prism.application.port.out.InvestigationKnowledgeBase;
 import ai.prism.application.port.out.InvestigationRepository;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
@@ -12,6 +13,7 @@ import ai.prism.application.reasoning.GetTrace;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.ReasoningStep;
 import ai.prism.application.reasoning.SearchLogs;
+import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationRequest;
@@ -35,6 +37,7 @@ public class InvestigationService implements InvestigateUseCase {
     private final MetricsPort metricsPort;
     private final LogsPort logsPort;
     private final TracingPort tracingPort;
+    private final InvestigationKnowledgeBase knowledgeBase;
     private final InvestigationRepository repository;
     private final int maxSteps;
 
@@ -43,12 +46,14 @@ public class InvestigationService implements InvestigateUseCase {
             MetricsPort metricsPort,
             LogsPort logsPort,
             TracingPort tracingPort,
+            InvestigationKnowledgeBase knowledgeBase,
             InvestigationRepository repository,
             int maxSteps) {
         this.reasoningPort = Objects.requireNonNull(reasoningPort, "reasoningPort must not be null");
         this.metricsPort = Objects.requireNonNull(metricsPort, "metricsPort must not be null");
         this.logsPort = Objects.requireNonNull(logsPort, "logsPort must not be null");
         this.tracingPort = Objects.requireNonNull(tracingPort, "tracingPort must not be null");
+        this.knowledgeBase = Objects.requireNonNull(knowledgeBase, "knowledgeBase must not be null");
         this.repository = Objects.requireNonNull(repository, "repository must not be null");
         if (maxSteps < 1) {
             throw new IllegalArgumentException("maxSteps must be at least 1");
@@ -79,6 +84,7 @@ public class InvestigationService implements InvestigateUseCase {
                 case SearchLogs l -> investigation.recordSignal(logsPort.search(l.logQl(), l.window()));
                 case GetTrace t -> investigation.recordSignal(tracingPort.getTrace(t.traceId()));
                 case SearchTraces s -> investigation.recordSignal(tracingPort.searchTraces(s.service(), s.window()));
+                case SearchPastInvestigations p -> investigation.recordSignal(knowledgeBase.findSimilar(p.query()));
                 case Conclusion c -> {
                     investigation.conclude(c.finding());
                     return;

@@ -2,6 +2,9 @@ package ai.prism.boot;
 
 import ai.prism.adapters.out.http.HttpExecutor;
 import ai.prism.adapters.out.http.JdkHttpExecutor;
+import ai.prism.adapters.out.knowledge.InMemoryInvestigationKnowledgeBase;
+import ai.prism.adapters.out.knowledge.PgVectorKnowledgeAdapter;
+import ai.prism.adapters.out.knowledge.RememberingInvestigateUseCase;
 import ai.prism.adapters.out.observability.ObservedHttpExecutor;
 import ai.prism.adapters.out.observability.ObservedInvestigateUseCase;
 import ai.prism.adapters.out.observability.ObservedReasoningPort;
@@ -12,6 +15,7 @@ import ai.prism.adapters.out.telemetry.LokiAdapter;
 import ai.prism.adapters.out.telemetry.PrometheusAdapter;
 import ai.prism.adapters.out.telemetry.TempoAdapter;
 import ai.prism.application.port.in.InvestigateUseCase;
+import ai.prism.application.port.out.InvestigationKnowledgeBase;
 import ai.prism.application.port.out.InvestigationRepository;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
@@ -25,10 +29,12 @@ import java.util.Collections;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -119,15 +125,29 @@ public class PrismConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "prism.knowledge", name = "store", havingValue = "pgvector", matchIfMissing = true)
+    InvestigationKnowledgeBase pgVectorKnowledgeBase(EmbeddingModel embeddingModel, DataSource dataSource, Clock clock) {
+        return new PgVectorKnowledgeAdapter(embeddingModel, dataSource, clock);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "prism.knowledge", name = "store", havingValue = "memory")
+    InvestigationKnowledgeBase inMemoryKnowledgeBase(Clock clock) {
+        return new InMemoryInvestigationKnowledgeBase(clock);
+    }
+
+    @Bean
     InvestigateUseCase investigateUseCase(ReasoningPort reasoningPort,
                                           MetricsPort metricsPort,
                                           LogsPort logsPort,
                                           TracingPort tracingPort,
+                                          InvestigationKnowledgeBase knowledgeBase,
                                           InvestigationRepository repository,
                                           @Value("${prism.investigation.max-steps}") int maxSteps,
                                           ObservationRegistry observationRegistry) {
-        InvestigationService service =
-                new InvestigationService(reasoningPort, metricsPort, logsPort, tracingPort, repository, maxSteps);
-        return new ObservedInvestigateUseCase(service, observationRegistry);
+        InvestigationService service = new InvestigationService(
+                reasoningPort, metricsPort, logsPort, tracingPort, knowledgeBase, repository, maxSteps);
+        InvestigateUseCase remembering = new RememberingInvestigateUseCase(service, knowledgeBase);
+        return new ObservedInvestigateUseCase(remembering, observationRegistry);
     }
 }

@@ -28,6 +28,9 @@ final class ReasoningTools {
     record SearchTracesInput(String service, String from, String to) {
     }
 
+    record SearchPastInvestigationsInput(String query) {
+    }
+
     record ConcludeInput(String rootCause, String evidence, String recommendedAction, String confidence) {
     }
 
@@ -53,6 +56,10 @@ final class ReasoningTools {
                         "Search Tempo for traces of a service over the given time window. Use to find "
                                 + "an exemplar trace for a symptom.",
                         SearchTracesInput.class),
+                tool(ReasoningToolNames.SEARCH_PAST_INVESTIGATIONS,
+                        "Recall past investigations similar to the query. Use early to check whether "
+                                + "this symptom has been seen and resolved before.",
+                        SearchPastInvestigationsInput.class),
                 tool(ReasoningToolNames.CONCLUDE,
                         "End the investigation. Call this once the evidence supports a root cause. "
                                 + "confidence must be one of LOW, MEDIUM, HIGH.",

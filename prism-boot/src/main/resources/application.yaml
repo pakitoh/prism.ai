@@ -10,17 +10,22 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:db/investigations-schema.sql
+      schema-locations: classpath:db/investigations-schema.sql,classpath:db/knowledge-schema.sql
 
   ai:
     model:
       chat: google-genai
+      embedding: google-genai
     google:
       genai:
         # Free Gemini Developer API key from https://aistudio.google.com/apikey
         api-key: ${GEMINI_API_KEY:}
 
 prism:
+  knowledge:
+    # 'pgvector' = semantic recall via Gemini embeddings + pgvector;
+    # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev).
+    store: ${PRISM_KNOWLEDGE_STORE:pgvector}
   reasoning:
     # 'fallback' retries across the model list on failure. ('race' is a future strategy.)
     strategy: fallback

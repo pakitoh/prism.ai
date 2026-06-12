@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ai.prism.application.port.out.InvestigationContext;
+import ai.prism.application.port.out.InvestigationKnowledgeBase;
 import ai.prism.application.port.out.InvestigationRepository;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
@@ -15,6 +16,7 @@ import ai.prism.application.port.out.TracingPort;
 import ai.prism.application.reasoning.Conclusion;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.SearchLogs;
+import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
@@ -49,6 +51,8 @@ class InvestigationServiceTest {
     @Mock
     private TracingPort tracingPort;
     @Mock
+    private InvestigationKnowledgeBase knowledgeBase;
+    @Mock
     private InvestigationRepository repository;
 
     private InvestigationService service;
@@ -59,7 +63,8 @@ class InvestigationServiceTest {
     }
 
     private InvestigationService serviceWithMaxSteps(int maxSteps) {
-        return new InvestigationService(reasoningPort, metricsPort, logsPort, tracingPort, repository, maxSteps);
+        return new InvestigationService(
+                reasoningPort, metricsPort, logsPort, tracingPort, knowledgeBase, repository, maxSteps);
     }
 
     private static InvestigationRequest request() {
@@ -76,6 +81,11 @@ class InvestigationServiceTest {
 
     private static Finding finding() {
         return new Finding("DB pool exhausted", "errors track pool saturation", "raise the pool", Confidence.HIGH);
+    }
+
+    private static Signal memorySignal() {
+        return new Signal(SignalType.MEMORY, "why is checkout-service erroring?",
+                "- \"past incident\" => DB pool exhausted (recommended: raise the pool)", WINDOW.from());
     }
 
     @Test
@@ -147,5 +157,19 @@ class InvestigationServiceTest {
         assertThat(investigation.status()).isEqualTo(InvestigationStatus.FAILED);
         assertThat(investigation.failureReason()).contains("prometheus unreachable");
         verify(repository).save(investigation);
+    }
+
+    @Test
+    void recallsPastInvestigationsFromTheKnowledgeBase() {
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new SearchPastInvestigations("why is checkout-service erroring?"),
+                new Conclusion(finding()));
+        when(knowledgeBase.findSimilar(any())).thenReturn(memorySignal());
+
+        Investigation investigation = service.handle(request());
+
+        assertThat(investigation.status()).isEqualTo(InvestigationStatus.CONCLUDED);
+        assertThat(investigation.signals()).containsExactly(memorySignal());
+        verify(knowledgeBase).findSimilar("why is checkout-service erroring?");
     }
 }

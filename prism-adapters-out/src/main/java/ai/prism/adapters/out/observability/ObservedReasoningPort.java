@@ -7,6 +7,7 @@ import ai.prism.application.reasoning.GetTrace;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.ReasoningStep;
 import ai.prism.application.reasoning.SearchLogs;
+import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
@@ -43,6 +44,7 @@ public class ObservedReasoningPort implements ReasoningPort {
             case SearchLogs ignored -> "search_logs";
             case GetTrace ignored -> "get_trace";
             case SearchTraces ignored -> "search_traces";
+            case SearchPastInvestigations ignored -> "search_past_investigations";
             case Conclusion ignored -> "conclusion";
         };
     }

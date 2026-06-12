@@ -7,6 +7,7 @@ import ai.prism.application.reasoning.Conclusion;
 import ai.prism.application.reasoning.GetTrace;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.SearchLogs;
+import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
 import ai.prism.domain.investigation.Confidence;
 import java.time.Instant;
@@ -57,6 +58,14 @@ class ReasoningStepMapperTest {
 
         assertThat(step).isInstanceOfSatisfying(SearchTraces.class,
                 s -> assertThat(s.service()).isEqualTo("checkout-service"));
+    }
+
+    @Test
+    void mapsSearchPastInvestigations() {
+        var step = mapper.map(ReasoningToolNames.SEARCH_PAST_INVESTIGATIONS, Map.of("query", "checkout errors"));
+
+        assertThat(step).isInstanceOfSatisfying(SearchPastInvestigations.class,
+                s -> assertThat(s.query()).isEqualTo("checkout errors"));
     }
 
     @Test

@@ -11,6 +11,7 @@ final class ReasoningToolNames {
     static final String SEARCH_LOGS = "search_logs";
     static final String GET_TRACE = "get_trace";
     static final String SEARCH_TRACES = "search_traces";
+    static final String SEARCH_PAST_INVESTIGATIONS = "search_past_investigations";
     static final String CONCLUDE = "conclude";
 
     private ReasoningToolNames() {

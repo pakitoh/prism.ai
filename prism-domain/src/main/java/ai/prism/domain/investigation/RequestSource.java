@@ -5,7 +5,7 @@ package ai.prism.domain.investigation;
  *
  * <ul>
  *   <li>{@code MANUAL} — a developer asked, via the REST API or the MCP server.</li>
- *   <li>{@code ALERT}  — an Alertmanager alert arrived via Kafka.</li>
+ *   <li>{@code ALERT}  — an alert arrived to the system.</li>
  * </ul>
  */
 public enum RequestSource {

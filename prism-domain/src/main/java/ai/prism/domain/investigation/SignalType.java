@@ -6,5 +6,6 @@ package ai.prism.domain.investigation;
 public enum SignalType {
     METRIC,
     LOG,
-    TRACE
+    TRACE,
+    MEMORY
 }

@@ -5,6 +5,7 @@ import ai.prism.application.reasoning.GetTrace;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.ReasoningStep;
 import ai.prism.application.reasoning.SearchLogs;
+import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
@@ -33,6 +34,8 @@ final class ReasoningStepMapper {
                     new GetTrace(string(arguments, "traceId"));
             case ReasoningToolNames.SEARCH_TRACES ->
                     new SearchTraces(string(arguments, "service"), window(arguments));
+            case ReasoningToolNames.SEARCH_PAST_INVESTIGATIONS ->
+                    new SearchPastInvestigations(string(arguments, "query"));
             case ReasoningToolNames.CONCLUDE -> new Conclusion(new Finding(
                     string(arguments, "rootCause"),
                     string(arguments, "evidence"),
