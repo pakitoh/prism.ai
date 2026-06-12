@@ -16,6 +16,10 @@ public interface InvestigationKnowledgeBase {
     /** Stores a concluded investigation so future ones can recall it. No-op if not concluded. */
     void remember(Investigation investigation);
 
-    /** Returns the most similar past investigations as a single {@code MEMORY} {@link Signal}. */
+    /**
+     * Returns the most similar past investigations as a single {@code MEMORY}
+     * {@link Signal}. Best-effort: it never throws — on failure it returns a signal
+     * indicating memory is unavailable, so recall never fails an investigation.
+     */
     Signal findSimilar(String query);
 }

@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.StringJoiner;
 import javax.sql.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
 
 /**
@@ -27,6 +29,8 @@ import org.springframework.ai.embedding.EmbeddingModel;
  * the embedding provider (Gemini by default, or a local model) is a wiring choice.
  */
 public class PgVectorKnowledgeAdapter implements InvestigationKnowledgeBase {
+
+    private static final Logger log = LoggerFactory.getLogger(PgVectorKnowledgeAdapter.class);
 
     private static final int MAX_RESULTS = 3;
 
@@ -81,6 +85,17 @@ public class PgVectorKnowledgeAdapter implements InvestigationKnowledgeBase {
 
     @Override
     public Signal findSimilar(String query) {
+        // Best-effort: memory recall (embedding + DB) must never fail an otherwise-fine
+        // investigation — a 429 or DB error degrades to "unavailable" rather than throwing.
+        try {
+            return new Signal(SignalType.MEMORY, query, recall(query), clock.instant());
+        } catch (RuntimeException failure) {
+            log.warn("Memory recall failed for \"{}\": {}", query, failure.toString());
+            return new Signal(SignalType.MEMORY, query, "Memory is currently unavailable.", clock.instant());
+        }
+    }
+
+    private String recall(String query) {
         String embedding = toVectorLiteral(embeddingModel.embed(query));
         List<String> lines = new ArrayList<>();
         try (Connection connection = dataSource.getConnection();
@@ -98,8 +113,7 @@ public class PgVectorKnowledgeAdapter implements InvestigationKnowledgeBase {
         } catch (SQLException failure) {
             throw new PersistenceException("Failed to search past investigations", failure);
         }
-        String content = lines.isEmpty() ? "No similar past investigations found." : String.join("\n", lines);
-        return new Signal(SignalType.MEMORY, query, content, clock.instant());
+        return lines.isEmpty() ? "No similar past investigations found." : String.join("\n", lines);
     }
 
     /** Formats an embedding as a pgvector literal, e.g. {@code [0.1,-0.2,3.0]}. */
