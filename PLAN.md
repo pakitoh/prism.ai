@@ -12,7 +12,7 @@ Docker Compose stack is live: Prometheus, Loki, Tempo, Grafana, OpenTelemetry Co
 
 ### 1.1 Maven project skeleton
 
-Multi-module layout: `prism-domain`, `prism-application`, `prism-adapters-in`, `prism-adapters-out`, `prism-boot`.
+Multi-module layout: `prism-domain`, `prism-adapters-in`, `prism-adapters-out`, `prism-boot`.
 
 ### 1.2 Domain model
 

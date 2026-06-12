@@ -126,7 +126,6 @@ Services after startup:
 
 ```
 prism-domain/          Domain model — pure Java, zero framework deps
-prism-application/     Use cases and port interfaces
 prism-adapters-in/     Inbound adapters: REST, MCP server, Kafka consumer
 prism-adapters-out/    Outbound adapters: model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector
 prism-boot/            Spring Boot wiring and configuration
@@ -144,8 +143,6 @@ Hexagonal architecture with a clean domain core. The investigation domain has no
   REST / MCP server (SSE) / Kafka
                │
         [Inbound Adapters]
-               │
-       [Application: Use Cases]
                │
           [Domain Core]
                │

@@ -1,4 +1,4 @@
-package ai.prism.application.service;
+package ai.prism.application.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,6 +17,7 @@ import ai.prism.application.reasoning.Conclusion;
 import ai.prism.application.reasoning.QueryMetrics;
 import ai.prism.application.reasoning.SearchLogs;
 import ai.prism.application.reasoning.SearchPastInvestigations;
+import ai.prism.application.service.InvestigationService;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
@@ -26,7 +27,6 @@ import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.SignalType;
 import ai.prism.domain.investigation.TimeWindow;
 import java.time.Instant;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

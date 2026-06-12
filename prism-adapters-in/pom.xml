@@ -16,7 +16,7 @@
     <dependencies>
         <dependency>
             <groupId>ai.prism</groupId>
-            <artifactId>prism-application</artifactId>
+            <artifactId>prism-domain</artifactId>
         </dependency>
 
         <!-- Inbound REST adapter -->

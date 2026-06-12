@@ -16,7 +16,7 @@
     <dependencies>
         <dependency>
             <groupId>ai.prism</groupId>
-            <artifactId>prism-application</artifactId>
+            <artifactId>prism-domain</artifactId>
         </dependency>
 
         <!-- Provider-neutral model access. The reasoning adapter calls the model

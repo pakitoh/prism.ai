@@ -14,7 +14,6 @@
 
     <modules>
         <module>prism-domain</module>
-        <module>prism-application</module>
         <module>prism-adapters-in</module>
         <module>prism-adapters-out</module>
         <module>prism-boot</module>
@@ -106,11 +105,6 @@
             <dependency>
                 <groupId>ai.prism</groupId>
                 <artifactId>prism-domain</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>ai.prism</groupId>
-                <artifactId>prism-application</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
