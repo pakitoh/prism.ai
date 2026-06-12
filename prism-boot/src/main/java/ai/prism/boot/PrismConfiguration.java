@@ -22,17 +22,22 @@ import ai.prism.application.port.out.MetricsPort;
 import ai.prism.application.port.out.ReasoningPort;
 import ai.prism.application.port.out.TracingPort;
 import ai.prism.application.service.InvestigationService;
+import com.openai.client.OpenAIClient;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
+import org.springframework.ai.openai.setup.OpenAiSetup;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -106,22 +111,33 @@ public class PrismConfiguration {
     }
 
     private static ChatModel buildGroqChatModel(ReasoningProperties.Groq groq) {
-        OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(groq.baseUrl())
-                .apiKey(groq.apiKey())
-                .build();
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(groq.model())
-                .build();
         return OpenAiChatModel.builder()
-                .openAiApi(api)
-                .defaultOptions(options)
+                .openAiClient(openAiClient(groq.baseUrl(), groq.apiKey()))
+                .options(OpenAiChatOptions.builder().model(groq.model()).build())
                 .build();
+    }
+
+    // Spring AI 2.0 builds OpenAI models on the official com.openai SDK client. This
+    // helper creates a sync client for any OpenAI-compatible endpoint (base URL + key).
+    private static OpenAIClient openAiClient(String baseUrl, String apiKey) {
+        return OpenAiSetup.setupSyncClient(baseUrl, apiKey, null, null, null, null,
+                false, false, null, Duration.ofSeconds(60), 2, null, null,
+                ObservationRegistry.NOOP, null, List.of());
     }
 
     @Bean
     InvestigationRepository investigationRepository(DataSource dataSource, JsonMapper jsonMapper) {
         return new PostgresInvestigationRepository(dataSource, jsonMapper);
+    }
+
+    @Bean
+    EmbeddingModel embeddingModel(@Value("${prism.embedding.api-key:}") String apiKey,
+                                  @Value("${prism.embedding.model}") String model,
+                                  @Value("${prism.embedding.base-url}") String baseUrl) {
+        // Spring AI's google-genai module has no Gemini EmbeddingModel, so we reach
+        // Gemini's OpenAI-compatible /embeddings endpoint with the same key.
+        return new OpenAiEmbeddingModel(openAiClient(baseUrl, apiKey), MetadataMode.EMBED,
+                OpenAiEmbeddingOptions.builder().model(model).build());
     }
 
     @Bean

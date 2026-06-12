@@ -65,7 +65,8 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
     public ReasoningStep nextStep(InvestigationContext context) {
         var optionsBuilder = ToolCallingChatOptions.builder()
                 .toolCallbacks(tools)
-                .internalToolExecutionEnabled(false);
+                //TO_REVIEW: .internalToolExecutionEnabled(false)
+                ;
         if (model != null && !model.isBlank()) {
             optionsBuilder.model(model);
         }

@@ -36,13 +36,23 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- OpenAI model module: used to build a Groq (OpenAI-compatible) ChatModel
-             as a cross-provider fallback. Constructed manually in wiring — its
-             autoconfiguration stays off because the chat provider selector is google-genai. -->
+        <!-- google-genai starter: autoconfigures the Gemini chat model. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-google-genai</artifactId>
+        </dependency>
+
+        <!-- OpenAI MODEL module only (NOT the starter): provides the classes to build
+             OpenAI-compatible clients by hand (Groq chat, Gemini-compat embeddings) via
+             OpenAiSetup. We avoid the OpenAI starter on purpose — its autoconfigs would
+             try to start unused audio/image/moderation/embedding models and fail without
+             an OpenAI key. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai</artifactId>
         </dependency>
+
+
 
         <!-- Observability: metrics, traces and logs exported via OTLP to the collector.
              Actuator + Micrometer Tracing provide the instrumentation; the exporters

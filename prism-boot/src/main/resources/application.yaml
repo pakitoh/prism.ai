@@ -15,7 +15,6 @@ spring:
   ai:
     model:
       chat: google-genai
-      embedding: google-genai
     google:
       genai:
         # Free Gemini Developer API key from https://aistudio.google.com/apikey
@@ -26,6 +25,12 @@ prism:
     # 'pgvector' = semantic recall via Gemini embeddings + pgvector;
     # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev).
     store: ${PRISM_KNOWLEDGE_STORE:pgvector}
+  embedding:
+    # Spring AI 1.1.7 has no native Gemini embedding model, so we use Gemini's
+    # OpenAI-compatible endpoint with the same GEMINI_API_KEY.
+    api-key: ${GEMINI_API_KEY:}
+    model: ${PRISM_EMBEDDING_MODEL:text-embedding-004}
+    base-url: ${PRISM_EMBEDDING_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
   reasoning:
     # 'fallback' retries across the model list on failure. ('race' is a future strategy.)
     strategy: fallback
