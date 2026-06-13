@@ -7,6 +7,9 @@ import ai.prism.domain.investigation.Signal;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -43,11 +46,14 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
             ISO-8601 UTC instants. Do not ask the user questions; gather evidence and conclude.
             """;
 
+    private static final Logger log = LoggerFactory.getLogger(SpringAiReasoningAdapter.class);
+
     private final ChatModel chatModel;
     private final JsonMapper jsonMapper;
     private final String model;
     private final ReasoningStepMapper stepMapper;
     private final List<ToolCallback> tools;
+    private final String toolNames;
 
     /**
      * @param model the model id to target per call, or {@code null}/blank to use
@@ -59,17 +65,31 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         this.model = model;
         this.stepMapper = new ReasoningStepMapper();
         this.tools = ReasoningTools.all();
+        this.toolNames = tools.stream()
+                .map(tool -> tool.getToolDefinition().name())
+                .collect(Collectors.joining(", "));
     }
 
     @Override
     public ReasoningStep nextStep(InvestigationContext context) {
-        var optionsBuilder = ToolCallingChatOptions.builder()
-                .toolCallbacks(tools);
+        // Start from the model's own default options so that the concrete subtype
+        // (e.g. GoogleGenAiChatOptions) is preserved — each provider casts the prompt
+        // options back to its specific type inside call().
+        ToolCallingChatOptions.Builder<?> optionsBuilder =
+                ((ToolCallingChatOptions) chatModel.getOptions())
+                        .mutate()
+                        .toolCallbacks(tools);
         if (model != null && !model.isBlank()) {
             optionsBuilder.model(model);
         }
+        String userMessage = renderUser(context);
+        // DEBUG shows exactly what we send each step: model id, available tools and the
+        // rendered user message (problem + evidence so far). The system prompt is a
+        // constant in this class, so it is logged at TRACE to avoid repeating it per call.
+        log.trace("Reasoning system prompt for model '{}':\n{}", model, SYSTEM_PROMPT);
+        log.debug("Reasoning request to model '{}' (tools: {}):\n{}", model, toolNames, userMessage);
         Prompt prompt = new Prompt(
-                List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(renderUser(context))),
+                List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(userMessage)),
                 optionsBuilder.build());
 
         ChatResponse response = chatModel.call(prompt);
@@ -78,6 +98,8 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         }
 
         AssistantMessage.ToolCall call = response.getResult().getOutput().getToolCalls().get(0);
+        log.debug("Reasoning response from model '{}': tool '{}' with arguments {}",
+                model, call.name(), call.arguments());
         return stepMapper.map(call.name(), parseArguments(call.arguments()));
     }
 

@@ -27,7 +27,9 @@ class ObservedReasoningPortTest {
         ReasoningStep step = new Conclusion(new Finding("rc", "ev", "act", Confidence.LOW));
         ReasoningPort port = new ObservedReasoningPort(ctx -> step, registry);
 
-        assertThat(port.nextStep(context)).isSameAs(step);
+        ReasoningStep nextStep = port.nextStep(context);
+
+        assertThat(nextStep).isSameAs(step);
         TestObservationRegistryAssert.assertThat(registry)
                 .hasObservationWithNameEqualTo("prism.reasoning.step")
                 .that()

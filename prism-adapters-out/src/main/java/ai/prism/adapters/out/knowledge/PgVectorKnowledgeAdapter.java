@@ -88,7 +88,9 @@ public class PgVectorKnowledgeAdapter implements InvestigationKnowledgeBase {
         // Best-effort: memory recall (embedding + DB) must never fail an otherwise-fine
         // investigation — a 429 or DB error degrades to "unavailable" rather than throwing.
         try {
-            return new Signal(SignalType.MEMORY, query, recall(query), clock.instant());
+            String content = recall(query);
+            log.debug("Memory recall for \"{}\": {}", query, content);
+            return new Signal(SignalType.MEMORY, query, content, clock.instant());
         } catch (RuntimeException failure) {
             log.warn("Memory recall failed for \"{}\": {}", query, failure.toString());
             return new Signal(SignalType.MEMORY, query, "Memory is currently unavailable.", clock.instant());

@@ -43,7 +43,10 @@ public class JdkHttpExecutor implements HttpExecutor {
             }
             return response.body();
         } catch (IOException transport) {
-            throw new HttpRequestException("GET " + uri + " failed: " + transport.getMessage(), transport);
+            String detail = transport.getMessage() != null
+                    ? transport.getMessage()
+                    : transport.getClass().getSimpleName();
+            throw new HttpRequestException("GET " + uri + " failed: " + detail, transport);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new HttpRequestException("GET " + uri + " was interrupted", interrupted);

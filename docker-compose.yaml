@@ -65,7 +65,7 @@ services:
       - ./scripts/tempo.yaml:/etc/tempo.yaml
       - ./data/tempo:/tmp/tempo
     ports:
-      - 3200  # Tempo HTTP
+      - 3200:3200  # Tempo HTTP
       - 4317  # OTLP Grpc
     networks:
       - prism-net

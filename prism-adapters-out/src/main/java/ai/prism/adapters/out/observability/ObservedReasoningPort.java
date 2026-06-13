@@ -9,9 +9,12 @@ import ai.prism.application.reasoning.ReasoningStep;
 import ai.prism.application.reasoning.SearchLogs;
 import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
+import ai.prism.domain.investigation.TimeWindow;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Instruments each reasoning step: a {@code prism.reasoning.step} span and timer
@@ -19,6 +22,8 @@ import java.util.Objects;
  * {@link ReasoningPort} (after fallback) gives one observation per loop iteration.
  */
 public class ObservedReasoningPort implements ReasoningPort {
+
+    private static final Logger log = LoggerFactory.getLogger(ObservedReasoningPort.class);
 
     private final ReasoningPort delegate;
     private final ObservationRegistry registry;
@@ -34,6 +39,7 @@ public class ObservedReasoningPort implements ReasoningPort {
         return observation.observe(() -> {
             ReasoningStep step = delegate.nextStep(context);
             observation.lowCardinalityKeyValue("step.kind", kindOf(step));
+            log.debug("Next tool: {}", describe(step));
             return step;
         });
     }
@@ -47,5 +53,22 @@ public class ObservedReasoningPort implements ReasoningPort {
             case SearchPastInvestigations ignored -> "search_past_investigations";
             case Conclusion ignored -> "conclusion";
         };
+    }
+
+    /** A one-line summary of the step the loop is about to execute, with its key arguments. */
+    private static String describe(ReasoningStep step) {
+        return switch (step) {
+            case QueryMetrics m -> "query_metrics promQl=\"" + m.promQl() + "\" window=" + window(m.window());
+            case SearchLogs l -> "search_logs logQl=\"" + l.logQl() + "\" window=" + window(l.window());
+            case GetTrace t -> "get_trace traceId=" + t.traceId();
+            case SearchTraces s -> "search_traces service=" + s.service() + " window=" + window(s.window());
+            case SearchPastInvestigations p -> "search_past_investigations query=\"" + p.query() + "\"";
+            case Conclusion c -> "conclude rootCause=\"" + c.finding().rootCause()
+                    + "\" confidence=" + c.finding().confidence();
+        };
+    }
+
+    private static String window(TimeWindow window) {
+        return window.from() + ".." + window.to();
     }
 }

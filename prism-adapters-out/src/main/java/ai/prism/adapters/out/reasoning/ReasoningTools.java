@@ -45,7 +45,12 @@ final class ReasoningTools {
                         QueryMetricsInput.class),
                 tool(ReasoningToolNames.SEARCH_LOGS,
                         "Run a LogQL query against Loki over the given time window. Use to read logs "
-                                + "for a service once a metric points at a suspect.",
+                                + "for a service once a metric points at a suspect. A LogQL query is a "
+                                + "stream selector followed by optional filters, e.g. "
+                                + "{service=\"checkout-service\"} |~ \"error|exception\" (the |~ regex "
+                                + "filter matches either word). LogQL has no 'or' keyword between line "
+                                + "filters: {service=\"checkout-service\"} |= \"error\" or |= \"exception\" "
+                                + "is INVALID — combine alternatives in a single |~ regex instead.",
                         SearchLogsInput.class),
                 tool(ReasoningToolNames.GET_TRACE,
                         "Fetch a single distributed trace from Tempo by its trace id. Use to inspect "

@@ -21,18 +21,18 @@ class RetryingReasoningPortTest {
     private final ReasoningStep step =
             new Conclusion(new Finding("root", "evidence", "action", Confidence.LOW));
 
-    private ReasoningPort succeeds(AtomicInteger calls) {
-        return ctx -> {
+    private RetryingReasoningPort.Delegate succeeds(AtomicInteger calls) {
+        return new RetryingReasoningPort.Delegate("ok-model", ctx -> {
             calls.incrementAndGet();
             return step;
-        };
+        });
     }
 
-    private ReasoningPort fails(AtomicInteger calls, String message) {
-        return ctx -> {
+    private RetryingReasoningPort.Delegate fails(AtomicInteger calls, String message) {
+        return new RetryingReasoningPort.Delegate("failing-model", ctx -> {
             calls.incrementAndGet();
             throw new RuntimeException(message);
-        };
+        });
     }
 
     @Test

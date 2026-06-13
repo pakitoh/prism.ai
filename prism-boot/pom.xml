@@ -42,11 +42,19 @@
             <artifactId>spring-ai-starter-model-google-genai</artifactId>
         </dependency>
 
+        <!-- google-genai embedding starter: autoconfigures the native Gemini
+             EmbeddingModel (GoogleGenAiTextEmbeddingModel), reusing the same
+             spring.ai.google.genai connection (API key) as the chat module. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-google-genai-embedding</artifactId>
+        </dependency>
+
         <!-- OpenAI MODEL module only (NOT the starter): provides the classes to build
-             OpenAI-compatible clients by hand (Groq chat, Gemini-compat embeddings) via
-             OpenAiSetup. We avoid the OpenAI starter on purpose — its autoconfigs would
-             try to start unused audio/image/moderation/embedding models and fail without
-             an OpenAI key. -->
+             OpenAI-compatible chat clients by hand (Groq + Gemini-compat reasoning
+             models) via OpenAiSetup. We avoid the OpenAI starter on purpose — its
+             autoconfigs would try to start unused audio/image/moderation/embedding
+             models and fail without an OpenAI key. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai</artifactId>

@@ -26,7 +26,9 @@ import ai.prism.domain.investigation.InvestigationStatus;
 import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.SignalType;
 import ai.prism.domain.investigation.TimeWindow;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +43,7 @@ class InvestigationServiceTest {
     private static final TimeWindow WINDOW = new TimeWindow(
             Instant.parse("2026-06-10T10:00:00Z"),
             Instant.parse("2026-06-10T10:30:00Z"));
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-10T10:15:00Z"), ZoneOffset.UTC);
 
     @Mock
     private ReasoningPort reasoningPort;
@@ -64,7 +67,7 @@ class InvestigationServiceTest {
 
     private InvestigationService serviceWithMaxSteps(int maxSteps) {
         return new InvestigationService(
-                reasoningPort, metricsPort, logsPort, tracingPort, knowledgeBase, repository, maxSteps);
+                reasoningPort, metricsPort, logsPort, tracingPort, knowledgeBase, repository, CLOCK, maxSteps);
     }
 
     private static InvestigationRequest request() {
@@ -147,16 +150,40 @@ class InvestigationServiceTest {
     }
 
     @Test
-    void failsAndStillPersistsWhenATelemetryQueryThrows() {
-        when(reasoningPort.nextStep(any()))
-                .thenReturn(new QueryMetrics("rate(http_errors_total[5m])", WINDOW));
+    void recordsAnErrorSignalAndContinuesWhenATelemetryQueryThrows() {
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new QueryMetrics("rate(http_errors_total[5m])", WINDOW),
+                new Conclusion(finding()));
         when(metricsPort.queryRange(any(), any())).thenThrow(new RuntimeException("prometheus unreachable"));
 
         Investigation investigation = service.handle(request());
 
-        assertThat(investigation.status()).isEqualTo(InvestigationStatus.FAILED);
-        assertThat(investigation.failureReason()).contains("prometheus unreachable");
+        // The failed query becomes recoverable evidence, not a fatal error: the loop
+        // carries on and the model concludes on the next step.
+        assertThat(investigation.status()).isEqualTo(InvestigationStatus.CONCLUDED);
+        assertThat(investigation.finding()).contains(finding());
+        assertThat(investigation.signals()).hasSize(1);
+        Signal error = investigation.signals().get(0);
+        assertThat(error.type()).isEqualTo(SignalType.METRIC);
+        assertThat(error.query()).isEqualTo("rate(http_errors_total[5m])");
+        assertThat(error.content()).contains("prometheus unreachable");
         verify(repository).save(investigation);
+    }
+
+    @Test
+    void recordsAnErrorSignalWhenALogQueryIsRejected() {
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new SearchLogs("{app=\"checkout\"} |= \"a\" or |= \"b\"", WINDOW),
+                new Conclusion(finding()));
+        when(logsPort.search(any(), any())).thenThrow(new RuntimeException("HTTP 400: parse error"));
+
+        Investigation investigation = service.handle(request());
+
+        assertThat(investigation.status()).isEqualTo(InvestigationStatus.CONCLUDED);
+        Signal error = investigation.signals().get(0);
+        assertThat(error.type()).isEqualTo(SignalType.LOG);
+        assertThat(error.query()).isEqualTo("{app=\"checkout\"} |= \"a\" or |= \"b\"");
+        assertThat(error.content()).contains("HTTP 400: parse error");
     }
 
     @Test

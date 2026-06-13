@@ -17,7 +17,11 @@ import ai.prism.application.reasoning.SearchPastInvestigations;
 import ai.prism.application.reasoning.SearchTraces;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationRequest;
+import ai.prism.domain.investigation.Signal;
+import ai.prism.domain.investigation.SignalType;
+import java.time.Clock;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Drives the investigation loop — the heart of the product.
@@ -28,8 +32,11 @@ import java.util.Objects;
  * conclusion ends the loop. The loop is bounded by {@code maxSteps} so it can
  * never run forever.
  *
- * <p>Any failure during reasoning or evidence-gathering marks the investigation
- * {@code FAILED} and it is still persisted, so no investigation is ever lost.
+ * <p>A failure while gathering evidence from a telemetry port is best-effort: it is
+ * recorded as an error {@link ai.prism.domain.investigation.Signal} so the model can
+ * react and try a different query, rather than aborting the run. Only a reasoning
+ * failure (after the port's own retries) marks the investigation {@code FAILED}. Either
+ * way the investigation is still persisted, so none is ever lost.
  */
 public class InvestigationService implements InvestigateUseCase {
 
@@ -39,6 +46,7 @@ public class InvestigationService implements InvestigateUseCase {
     private final TracingPort tracingPort;
     private final InvestigationKnowledgeBase knowledgeBase;
     private final InvestigationRepository repository;
+    private final Clock clock;
     private final int maxSteps;
 
     public InvestigationService(
@@ -48,6 +56,7 @@ public class InvestigationService implements InvestigateUseCase {
             TracingPort tracingPort,
             InvestigationKnowledgeBase knowledgeBase,
             InvestigationRepository repository,
+            Clock clock,
             int maxSteps) {
         this.reasoningPort = Objects.requireNonNull(reasoningPort, "reasoningPort must not be null");
         this.metricsPort = Objects.requireNonNull(metricsPort, "metricsPort must not be null");
@@ -55,6 +64,7 @@ public class InvestigationService implements InvestigateUseCase {
         this.tracingPort = Objects.requireNonNull(tracingPort, "tracingPort must not be null");
         this.knowledgeBase = Objects.requireNonNull(knowledgeBase, "knowledgeBase must not be null");
         this.repository = Objects.requireNonNull(repository, "repository must not be null");
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
         if (maxSteps < 1) {
             throw new IllegalArgumentException("maxSteps must be at least 1");
         }
@@ -80,10 +90,14 @@ public class InvestigationService implements InvestigateUseCase {
                     new InvestigationContext(investigation.request(), investigation.signals());
             ReasoningStep next = reasoningPort.nextStep(context);
             switch (next) {
-                case QueryMetrics m -> investigation.recordSignal(metricsPort.queryRange(m.promQl(), m.window()));
-                case SearchLogs l -> investigation.recordSignal(logsPort.search(l.logQl(), l.window()));
-                case GetTrace t -> investigation.recordSignal(tracingPort.getTrace(t.traceId()));
-                case SearchTraces s -> investigation.recordSignal(tracingPort.searchTraces(s.service(), s.window()));
+                case QueryMetrics m -> dispatch(investigation, SignalType.METRIC, m.promQl(),
+                        () -> metricsPort.queryRange(m.promQl(), m.window()));
+                case SearchLogs l -> dispatch(investigation, SignalType.LOG, l.logQl(),
+                        () -> logsPort.search(l.logQl(), l.window()));
+                case GetTrace t -> dispatch(investigation, SignalType.TRACE, t.traceId(),
+                        () -> tracingPort.getTrace(t.traceId()));
+                case SearchTraces s -> dispatch(investigation, SignalType.TRACE, s.service(),
+                        () -> tracingPort.searchTraces(s.service(), s.window()));
                 case SearchPastInvestigations p -> investigation.recordSignal(knowledgeBase.findSimilar(p.query()));
                 case Conclusion c -> {
                     investigation.conclude(c.finding());
@@ -92,6 +106,22 @@ public class InvestigationService implements InvestigateUseCase {
             }
         }
         investigation.fail("reached the step limit of " + maxSteps + " without a conclusion");
+    }
+
+    /**
+     * Dispatches a telemetry query, best-effort: a thrown {@link RuntimeException} (e.g.
+     * an HTTP 400 from a malformed query) is recorded as an error {@link Signal} carrying
+     * the failed query, so the next reasoning step can correct it instead of the whole
+     * investigation failing.
+     */
+    private void dispatch(Investigation investigation, SignalType type, String query, Supplier<Signal> call) {
+        try {
+            investigation.recordSignal(call.get());
+        } catch (RuntimeException failure) {
+            investigation.recordSignal(new Signal(type, query,
+                    "Query failed: " + describe(failure) + ". Adjust the query and try again.",
+                    clock.instant()));
+        }
     }
 
     private static String describe(RuntimeException failure) {

@@ -1,3 +1,6 @@
+server:
+  port: 8087
+
 spring:
   application:
     name: prism-ai
@@ -15,45 +18,67 @@ spring:
   ai:
     model:
       chat: google-genai
+      # embedding.text defaults to google-genai (the only embedding model on the
+      # classpath, from spring-ai-starter-model-google-genai-embedding). Set to 'none'
+      # to disable when running store=memory without a key (see prism.knowledge below).
     google:
       genai:
-        # Free Gemini Developer API key from https://aistudio.google.com/apikey
+        # Free Gemini Developer API key from https://aistudio.google.com/apikey.
+        # NOTE: chat and embedding are DIFFERENT connection prefixes — each needs its
+        # own api-key; the embedding connection does not inherit the chat one. Without
+        # it the embedding autoconfig falls back to Vertex AI mode and demands a project-id.
         api-key: ${GEMINI_API_KEY:}
+        embedding:
+          api-key: ${GEMINI_API_KEY:}        # spring.ai.google.genai.embedding (connection)
+          text:
+            options:
+              model: ${PRISM_EMBEDDING_MODEL:gemini-embedding-2}
+    chat:
+      observations:
+        log-prompt: true       # logs the full assembled prompt (messages)
+        log-completion: true   # logs the model's completion
 
 prism:
   knowledge:
-    # 'pgvector' = semantic recall via Gemini embeddings + pgvector;
-    # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev).
+    # 'pgvector' = semantic recall via the native Gemini EmbeddingModel + pgvector;
+    # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev — set
+    # spring.ai.model.embedding.text=none if running it without a GEMINI_API_KEY).
     store: ${PRISM_KNOWLEDGE_STORE:pgvector}
-  embedding:
-    # Spring AI 1.1.7 has no native Gemini embedding model, so we use Gemini's
-    # OpenAI-compatible endpoint with the same GEMINI_API_KEY.
-    api-key: ${GEMINI_API_KEY:}
-    model: ${PRISM_EMBEDDING_MODEL:text-embedding-004}
-    base-url: ${PRISM_EMBEDDING_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
   reasoning:
-    # Each reasoning step retries up to max-attempts, rotating to the next model on error.
-    # Defaults to the number of models when unset.
+    # Two-tier retry: the HTTP client retries transient errors (429, 5xx) up to 2 times
+    # on the same model before raising. RetryingReasoningPort then rotates to the next
+    # model for up to max-attempts total reasoning attempts. One reasoning attempt may
+    # therefore represent up to 3 HTTP calls, so the worst-case total is max-attempts * 3.
     max-attempts: ${PRISM_MAX_ATTEMPTS:4}
     # Ordered list — first entry is tried first. Entries with only 'id' use the
     # auto-configured ChatModel (Spring AI starter). Entries with 'base-url' and 'api-key'
     # target that OpenAI-compatible endpoint; both fields are required or startup fails.
     # NOTE: gemini-2.5-pro is NOT on the free tier (quota 0) — needs a billing-enabled key.
     models:
-      - id: ${PRISM_MODEL:gemini-2.5-flash}
-      - id: gemini-2.0-flash
-      # Example: add an OpenAI-compatible provider (e.g. Groq) as a further fallback:
-      # - id: llama-3.3-70b-versatile
-      #   api-key: ${GROQ_API_KEY}
-      #   base-url: https://api.groq.com/openai
+    - id: llama-3.3-70b-versatile
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+    - id: qwen/qwen3-32b
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+    - id: openai/gpt-oss-120b
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+    - id: gemini-3.5-flash
+      api-key: ${GEMINI_API_KEY}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+    - id: gemini-3.1-flash-lite
+      api-key: ${GEMINI_API_KEY}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+    - id: gemma-4-31b-it
+      api-key: ${GEMINI_API_KEY}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
   telemetry:
     prometheus-url: ${PRISM_PROMETHEUS_URL:http://localhost:9090}
     loki-url: ${PRISM_LOKI_URL:http://localhost:3100}
-    # NOTE: docker-compose does not publish Tempo's 3200 to the host yet — run
-    # the app inside the prism-net network, or add a host port mapping for Tempo.
     tempo-url: ${PRISM_TEMPO_URL:http://localhost:3200}
   investigation:
-    max-steps: ${PRISM_MAX_STEPS:12}
+    max-steps: ${PRISM_MAX_STEPS:24}
 
 # Observability: export metrics, traces and logs via OTLP to the collector
 # (http://localhost:4318 from the host; otel-collector:4318 inside prism-net).
@@ -78,3 +103,12 @@ management:
           service.name: ${spring.application.name}
     logging:
       endpoint: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/logs
+
+logging:
+  level:
+    ai.prism.adapters.out.reasoning.SpringAiReasoningAdapter: DEBUG
+    # add TRACE here instead if you also want the system prompt
+
+    ai.prism.adapters.out: DEBUG
+    # or narrow it, e.g. ai.prism.adapters.out.observability: DEBUG
+    # add TRACE on ObservedHttpExecutor for full (untruncated) telemetry bodies
