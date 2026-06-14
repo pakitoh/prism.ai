@@ -150,7 +150,7 @@ Services after startup:
 | LLM | Google Gemini (default) + Groq cross-provider fallback · retry with model rotation · provider/model configurable |
 | Vector memory | PostgreSQL + pgvector |
 | Event bus | Kafka (KRaft) + Schema Registry |
-| MCP interface | MCP Java SDK — SSE/HTTP transport |
+| MCP interface | MCP Java SDK — Streamable HTTP transport |
 | Application | Java 25 · Maven · Spring Boot 4 |
 | Self-observability | Micrometer + OpenTelemetry (OTLP) → its own Tempo · Prometheus · Loki |
 

@@ -110,9 +110,11 @@ and memory decorators. REST: `POST /investigations` → `202 Accepted` + id;
 
 ---
 
-## Phase 4 — MCP Server Interface
+## Phase 4 — Remote MCP Server
 
 **Goal:** expose prism.ai as a remote MCP server so developers can trigger and query investigations from Claude Code or Claude Desktop, regardless of where the observability stack lives.
+
+> MCP uses date-versioned protocol revisions; this phase targets **2025-06-18** over the modern **Streamable HTTP** transport, which replaced the deprecated HTTP+SSE two-endpoint transport.
 
 ### 4.1 Why this matters
 
@@ -130,30 +132,37 @@ prism.ai runs in the cloud with direct access to the company's observability sta
 }
 ```
 
-### 4.2 McpServerAdapter (inbound)
+### 4.2 Transport & protocol
 
-New inbound adapter in `prism-adapters-in`. Implements the MCP server protocol using the MCP Java SDK with SSE/HTTP transport (suitable for remote/cloud deployment).
+**Streamable HTTP** on a single endpoint (`POST`/`GET /mcp`): POST carries JSON-RPC requests; the server may upgrade the same connection to SSE for notifications/progress; sessions are tracked via the `Mcp-Session-Id` header; the revision is negotiated via `MCP-Protocol-Version` (target `2025-06-18`). Apply the spec's HTTP-transport hardening: `Origin` validation (DNS-rebinding protection) and TLS at the edge. The deprecated HTTP+SSE two-endpoint transport is not used.
 
-Tools exposed:
+### 4.3 McpServerAdapter (inbound)
+
+New inbound adapter in `prism-adapters-in`, built on the **Spring AI MCP server (WebMVC) starter** (the servlet variant matching the app's stack), which wraps the MCP Java SDK and provides the Streamable HTTP transport. It depends only on the inbound ports `InvestigationCommandsUseCase` + `InvestigationQueriesUseCase` — the same spine REST and the Kafka consumer use — and translates only, no business logic.
+
+Tools exposed (mapped to the ports), returning 2025-06-18 **structured output** (`outputSchema` / `structuredContent`):
 
 ```
-investigate(query, service?, window?)  — trigger an investigation; returns investigation ID
-get_investigation(id)                  — fetch status and result of a running or completed investigation
-list_recent_investigations(limit?)     — surface recent investigations; useful for pattern spotting
+investigate(query, service?, from?, to?)  → commands.submit(request)  — returns { id, status: PENDING } at once
+get_investigation(id)                     → queries.findById(id)      — status, finding, signal count
+list_recent_investigations(limit?)        → queries.recent(limit)     — recent summaries for pattern-spotting
 ```
 
-### 4.3 Authentication
+These inbound tool DTOs are distinct from the LLM's outbound `ReasoningTools`.
 
-API key via request header. Keys are scoped per team or developer. No anonymous access.
+### 4.4 Async behaviour
 
-### 4.4 Transport
+`investigate` returns the id immediately (it maps to `submit`); the client polls `get_investigation` until the status is `CONCLUDED`/`FAILED`. State lives in Postgres, so it survives sessions and restarts. *(Optional later: stream live progress over the Streamable HTTP SSE channel instead of polling.)*
 
-SSE over HTTPS. The MCP client (Claude Code/Desktop) opens a persistent SSE connection; the server streams tool results back as events. This works through corporate proxies and firewalls where WebSockets may be blocked.
+### 4.5 Authentication
 
-### 4.5 Testing
+- **v1:** API key via request header, enforced by a filter on `/mcp`; keys scoped per team or developer, no anonymous access.
+- **Spec-aligned upgrade:** OAuth 2.1 with the server acting as a Resource Server (bearer token, `WWW-Authenticate` challenge, protected-resource metadata).
 
-- Unit test: MCP tool definitions serialise correctly
-- Integration test: MCP client connects, calls `investigate`, receives a `Finding`
+### 4.6 Testing
+
+- Unit: MCP tool schemas serialise correctly; request → port mapping with mocked ports.
+- Integration: an MCP client (MCP Java SDK, Streamable HTTP) connects, calls `investigate`, polls `get_investigation`, and receives a `Finding` — `@SpringBootTest` over the WebMVC transport.
 
 ---
 
