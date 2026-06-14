@@ -9,11 +9,8 @@ spring:
     url: ${PRISM_DB_URL:jdbc:postgresql://localhost:5432/prism_db}
     username: ${PRISM_DB_USER:postgres}
     password: ${PRISM_DB_PASSWORD:postgres}
-
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:db/investigations-schema.sql,classpath:db/knowledge-schema.sql
+    # Schema is created by the Postgres container's docker-entrypoint-initdb.d
+    # (scripts/prism-db-init.sql), not by the app — so no spring.sql.init here.
 
   ai:
     model:
@@ -110,5 +107,5 @@ logging:
     # add TRACE here instead if you also want the system prompt
 
     ai.prism.adapters.out: DEBUG
-    # or narrow it, e.g. ai.prism.adapters.out.observability: DEBUG
-    # add TRACE on ObservedHttpExecutor for full (untruncated) telemetry bodies
+    # or narrow it, e.g. ai.prism.adapters.out.investigation: DEBUG
+    # add TRACE on ai.prism.adapters.out.http.ObservedHttpExecutor for full (untruncated) telemetry bodies

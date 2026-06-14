@@ -3,10 +3,10 @@ package ai.prism.adapters.out.reasoning;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ai.prism.application.port.out.InvestigationContext;
+import ai.prism.domain.reasoning.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
-import ai.prism.application.reasoning.Conclusion;
-import ai.prism.application.reasoning.ReasoningStep;
+import ai.prism.domain.reasoning.Conclusion;
+import ai.prism.domain.reasoning.ReasoningStep;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.InvestigationRequest;

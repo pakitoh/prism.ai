@@ -1,7 +1,7 @@
 package ai.prism.adapters.out.reasoning;
 
 /**
- * The tool names the model uses to express a {@link ai.prism.application.reasoning.ReasoningStep}.
+ * The tool names the model uses to express a {@link ai.prism.domain.reasoning.ReasoningStep}.
  * Shared between the tool declarations sent to the model and the mapper that
  * interprets the model's tool call.
  */

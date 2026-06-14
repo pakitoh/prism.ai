@@ -97,6 +97,12 @@ docker compose up -d
 docker compose ps
 ```
 
+> The Postgres container creates the database schema on first startup from
+> [`scripts/prism-db-init.sql`](scripts/prism-db-init.sql) via `docker-entrypoint-initdb.d`
+> — the app runs no DDL. This fires only when the data directory is empty, so to
+> apply later schema changes, clear the bind mount and restart:
+> `docker compose down && sudo rm -rf data/postgres && docker compose up -d`.
+
 Services after startup:
 
 | Service | URL |

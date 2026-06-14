@@ -4,56 +4,58 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import ai.prism.application.port.in.InvestigateUseCase;
+import ai.prism.application.port.in.InvestigationCommandsUseCase;
+import ai.prism.application.port.in.InvestigationQueriesUseCase;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
+import ai.prism.domain.investigation.InvestigationId;
 import ai.prism.domain.investigation.InvestigationRequest;
 import ai.prism.domain.investigation.RequestSource;
 import java.time.Instant;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 @ExtendWith(MockitoExtension.class)
 class InvestigationControllerTest {
 
     @Mock
-    private InvestigateUseCase useCase;
+    private InvestigationCommandsUseCase useCase;
+    @Mock
+    private InvestigationQueriesUseCase queries;
+
+    private InvestigationController controller() {
+        return new InvestigationController(useCase, queries);
+    }
 
     @Test
-    void mapsAConcludedInvestigationToTheResponse() {
-        Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
-        concluded.start();
-        concluded.conclude(new Finding("DB pool exhausted", "errors track saturation", "raise the pool", Confidence.HIGH));
-        when(useCase.handle(any())).thenReturn(concluded);
+    void acceptsAnInvestigationAndReturns202WithItsId() {
+        InvestigationId id = InvestigationId.newId();
+        when(useCase.submit(any())).thenReturn(id);
 
-        InvestigationController controller = new InvestigationController(useCase);
-        InvestigationResponse response = controller.investigate(
-                new InvestigateRequestBody("why errors?", null, null, null));
+        ResponseEntity<InvestigationAcceptedResponse> response = controller()
+                .investigate(new InvestigateRequestBody("why errors?", null, null, null));
 
-        assertThat(response.id()).isEqualTo(concluded.id().toString());
-        assertThat(response.status()).isEqualTo("CONCLUDED");
-        assertThat(response.failureReason()).isNull();
-        assertThat(response.finding().rootCause()).isEqualTo("DB pool exhausted");
-        assertThat(response.finding().confidence()).isEqualTo("HIGH");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody().id()).isEqualTo(id.toString());
+        assertThat(response.getBody().status()).isEqualTo("PENDING");
     }
 
     @Test
     void buildsADomainRequestWithServiceAndWindow() {
-        Investigation failed = Investigation.open(InvestigationRequest.manual("x"));
-        failed.start();
-        failed.fail("collector down");
-        when(useCase.handle(any())).thenReturn(failed);
+        when(useCase.submit(any())).thenReturn(InvestigationId.newId());
 
-        InvestigationController controller = new InvestigationController(useCase);
-        controller.investigate(new InvestigateRequestBody(
+        controller().investigate(new InvestigateRequestBody(
                 "high latency", "checkout", "2026-06-10T10:00:00Z", "2026-06-10T10:30:00Z"));
 
         ArgumentCaptor<InvestigationRequest> request = ArgumentCaptor.forClass(InvestigationRequest.class);
-        org.mockito.Mockito.verify(useCase).handle(request.capture());
+        org.mockito.Mockito.verify(useCase).submit(request.capture());
         assertThat(request.getValue().query()).isEqualTo("high latency");
         assertThat(request.getValue().service()).contains("checkout");
         assertThat(request.getValue().source()).isEqualTo(RequestSource.MANUAL);
@@ -62,17 +64,27 @@ class InvestigationControllerTest {
     }
 
     @Test
-    void mapsAFailedInvestigationToTheResponse() {
-        Investigation failed = Investigation.open(InvestigationRequest.manual("x"));
-        failed.start();
-        failed.fail("model timed out");
-        when(useCase.handle(any())).thenReturn(failed);
+    void getReturnsTheInvestigationWhenFound() {
+        Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
+        concluded.start();
+        concluded.conclude(new Finding("DB pool exhausted", "errors track saturation", "raise the pool", Confidence.HIGH));
+        when(queries.findById(any())).thenReturn(Optional.of(concluded));
 
-        InvestigationController controller = new InvestigationController(useCase);
-        InvestigationResponse response = controller.investigate(new InvestigateRequestBody("x", null, null, null));
+        ResponseEntity<InvestigationResponse> response = controller().get(concluded.id().toString());
 
-        assertThat(response.status()).isEqualTo("FAILED");
-        assertThat(response.finding()).isNull();
-        assertThat(response.failureReason()).isEqualTo("model timed out");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().id()).isEqualTo(concluded.id().toString());
+        assertThat(response.getBody().status()).isEqualTo("CONCLUDED");
+        assertThat(response.getBody().finding().rootCause()).isEqualTo("DB pool exhausted");
+    }
+
+    @Test
+    void getReturns404WhenMissing() {
+        when(queries.findById(any())).thenReturn(Optional.empty());
+
+        ResponseEntity<InvestigationResponse> response = controller().get(InvestigationId.newId().toString());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).isNull();
     }
 }

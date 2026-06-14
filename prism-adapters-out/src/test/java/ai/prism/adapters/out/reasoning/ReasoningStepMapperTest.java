@@ -3,12 +3,12 @@ package ai.prism.adapters.out.reasoning;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ai.prism.application.reasoning.Conclusion;
-import ai.prism.application.reasoning.GetTrace;
-import ai.prism.application.reasoning.QueryMetrics;
-import ai.prism.application.reasoning.SearchLogs;
-import ai.prism.application.reasoning.SearchPastInvestigations;
-import ai.prism.application.reasoning.SearchTraces;
+import ai.prism.domain.reasoning.Conclusion;
+import ai.prism.domain.reasoning.GetTrace;
+import ai.prism.domain.reasoning.QueryMetrics;
+import ai.prism.domain.reasoning.SearchLogs;
+import ai.prism.domain.reasoning.SearchPastInvestigations;
+import ai.prism.domain.reasoning.SearchTraces;
 import ai.prism.domain.investigation.Confidence;
 import java.time.Instant;
 import java.util.HashMap;

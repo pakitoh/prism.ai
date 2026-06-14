@@ -1,8 +1,8 @@
 package ai.prism.adapters.out.reasoning;
 
-import ai.prism.application.port.out.InvestigationContext;
+import ai.prism.domain.reasoning.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
-import ai.prism.application.reasoning.ReasoningStep;
+import ai.prism.domain.reasoning.ReasoningStep;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;

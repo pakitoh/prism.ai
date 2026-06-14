@@ -21,6 +21,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,6 +53,13 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
                    finding_root_cause, finding_evidence, finding_recommended_action, finding_confidence,
                    failure_reason, signals
             FROM investigations WHERE id = ?
+            """;
+
+    private static final String SELECT_RECENT = """
+            SELECT id, query, service, window_from, window_to, source, status,
+                   finding_root_cause, finding_evidence, finding_recommended_action, finding_confidence,
+                   failure_reason, signals
+            FROM investigations ORDER BY created_at DESC LIMIT ?
             """;
 
     private final DataSource dataSource;
@@ -97,6 +105,23 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
             }
         } catch (SQLException failure) {
             throw new PersistenceException("Failed to load investigation " + id, failure);
+        }
+    }
+
+    @Override
+    public List<Investigation> recent(int limit) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_RECENT)) {
+            statement.setInt(1, limit);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<Investigation> investigations = new ArrayList<>();
+                while (rows.next()) {
+                    investigations.add(reconstruct(rows));
+                }
+                return investigations;
+            }
+        } catch (SQLException failure) {
+            throw new PersistenceException("Failed to load recent investigations", failure);
         }
     }
 

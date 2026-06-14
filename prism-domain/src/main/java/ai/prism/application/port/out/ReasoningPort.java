@@ -1,6 +1,7 @@
 package ai.prism.application.port.out;
 
-import ai.prism.application.reasoning.ReasoningStep;
+import ai.prism.domain.reasoning.InvestigationContext;
+import ai.prism.domain.reasoning.ReasoningStep;
 
 /**
  * Outbound port for the reasoning engine.

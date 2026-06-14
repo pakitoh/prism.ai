@@ -2,6 +2,7 @@ package ai.prism.application.port.out;
 
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationId;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -12,4 +13,7 @@ public interface InvestigationRepository {
     void save(Investigation investigation);
 
     Optional<Investigation> findById(InvestigationId id);
+
+    /** The most recently created investigations, newest first, capped at {@code limit}. */
+    List<Investigation> recent(int limit);
 }

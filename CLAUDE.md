@@ -37,8 +37,9 @@ prism-boot          — Spring Boot wiring; depends on all adapter modules
 - **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly (`/api/v1/query_range`, `/loki/api/v1/query_range`, `/api/traces/{id}`); do not introduce grafana-mcp as a runtime dependency
 - **MCP Java SDK** — used in `McpServerAdapter` (inbound) to expose prism.ai's investigation tools over SSE/HTTP transport; this makes prism.ai a remote MCP server that Claude Code and Claude Desktop can connect to
 - **pgvector via JDBC** — no ORM for vector operations; write plain SQL for similarity search queries
-- **Memory of past investigations** — `InvestigationKnowledgeBase` port (in `prism-domain`): `remember(Investigation)` after a conclusion, `findSimilar(query)` during the loop. Both are **best-effort** (never fail an investigation): `findSimilar` never throws (returns an "unavailable" `MEMORY` signal on error), and storing runs through the `RememberingInvestigateUseCase` decorator which logs and swallows failures. Two implementations selected by `prism.knowledge.store`: `InMemoryInvestigationKnowledgeBase` (token overlap, for dev) and `PgVectorKnowledgeAdapter` (Spring AI `EmbeddingModel` + pgvector, plain SQL).
-- **Self-observability** — the app exports its own metrics, traces and logs via OTLP to the collector (→ Tempo / Prometheus / Loki). Baseline comes from Actuator + Micrometer Tracing (HTTP-server spans, JVM metrics, Spring AI model-call spans); domain-specific instrumentation lives in `Observed*` decorators in `ai.prism.adapters.out.observability`, wired at the composition root. Never put Micrometer/observation code in the domain or application layers — instrument with decorators that wrap the ports.
+- **Memory of past investigations** — `MemoryPort` (in `prism-domain`): `remember(Investigation)` after a conclusion, `findSimilar(query)` during the loop. Both are **best-effort** (never fail an investigation): `findSimilar` never throws (returns an "unavailable" `MEMORY` signal on error), and storing runs through the `RememberingInvestigationRunner` decorator which logs and swallows failures. Two implementations selected by `prism.knowledge.store`: `TokenOverlapMemory` (token overlap, for dev) and `PgVectorMemory` (Spring AI `EmbeddingModel` + pgvector, plain SQL), both in `adapters.out.memory`.
+- **Database schema** — DDL lives in `scripts/prism-db-init.sql`, applied by the Postgres container's `docker-entrypoint-initdb.d` on first init of an empty data dir (wired in `docker-compose.yaml`). The app runs **no** DDL — there is no `spring.sql.init`, and the persistence adapters assume the schema exists. Because the init hook only fires on a fresh data dir, schema changes require recreating the DB: `./data/postgres` is a bind mount, so clear it (`docker compose down && sudo rm -rf data/postgres && docker compose up -d`) rather than relying on `down -v`.
+- **Self-observability** — the app exports its own metrics, traces and logs via OTLP to the collector (→ Tempo / Prometheus / Loki). Baseline comes from Actuator + Micrometer Tracing (HTTP-server spans, JVM metrics, Spring AI model-call spans); domain-specific instrumentation lives in `Observed*` decorators colocated with the port family each one wraps (e.g. `ObservedReasoningPort` in `adapters.out.reasoning`, `ObservedHttpExecutor` in `adapters.out.http`, `ObservedEmbeddingModel` in `adapters.out.memory`, `ObservedInvestigationRunner` in `adapters.out.investigation`), wired at the composition root. Never put Micrometer/observation code in the domain or application layers — instrument with decorators that wrap the ports.
 
 ---
 
@@ -71,9 +72,9 @@ The split of responsibility:
   investigation so far: gather a specific piece of evidence, or conclude. This is
   the only part that knows a provider's tool-use protocol; it is implemented by an
   adapter and returns a `ReasoningStep`.
-- **`InvestigationService`** owns the loop. It repeatedly asks for the next step,
+- **`InvestigationLoop`** owns the loop. It repeatedly asks for the next step,
   dispatches tool requests to the telemetry ports (`MetricsPort`, `LogsPort`,
-  `TracingPort`) or the memory port (`InvestigationKnowledgeBase`), records each
+  `TracingPort`) or the memory port (`MemoryPort`), records each
   `Signal` on the aggregate, and ends when a `Conclusion` arrives or the `maxSteps`
   bound is hit.
 
