@@ -34,19 +34,19 @@ ReasoningPort     — nextStep(InvestigationContext) → ReasoningStep (a tool r
 InvestigationRepository — persist / load Investigation aggregates
 ```
 
-The investigation loop lives in `InvestigationService` (application layer), not in
-any adapter. The service drives the steps, dispatches tool requests to the telemetry
+The investigation loop lives in `InvestigationLoop` (application layer), not in
+any adapter. It drives the steps, dispatches tool requests to the telemetry
 ports, records signals, and stops on a conclusion or the `maxSteps` bound. The
 `ReasoningStep` sealed type (`QueryMetrics | SearchLogs | GetTrace | SearchTraces |
-SearchPastInvestigations | Conclusion`) is the model-agnostic vocabulary crossing the
-`ReasoningPort` boundary.
+SearchPastInvestigations | Conclusion`, in `ai.prism.domain.reasoning`) is the
+model-agnostic vocabulary crossing the `ReasoningPort` boundary.
 
 ### 1.4 Adapters
 
 - `PrometheusAdapter` implements `MetricsPort` via Prometheus HTTP API (`/api/v1/query_range`)
 - `LokiAdapter` implements `LogsPort` via Loki HTTP API (`/loki/api/v1/query_range`)
 - `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`)
-- `SpringAiReasoningAdapter` implements `ReasoningPort` via Spring AI, with **internal tool execution disabled** (`ToolCallingChatOptions.internalToolExecutionEnabled(false)`) so the model's tool choice is returned to the loop rather than executed by the framework. A pure `ReasoningStepMapper` translates the tool call into a `ReasoningStep`. Provider and model id are configuration-driven; the loop stays in `InvestigationService`.
+- `SpringAiReasoningAdapter` implements `ReasoningPort` via Spring AI: the framework's agentic tool-execution loop is not used, so the model's single tool choice is returned to the loop rather than executed by the framework. A pure `ReasoningStepMapper` translates the tool call into a `ReasoningStep`. Provider and model id are configuration-driven; the loop stays in `InvestigationLoop`.
 - `PostgresInvestigationRepository` persists Investigation aggregates
 - **Reasoning resilience** (added later): `RetryingReasoningPort` wraps the per-model `SpringAiReasoningAdapter`s and retries each step up to `prism.reasoning.max-attempts`, rotating models on error — including a cross-provider Groq (OpenAI-compatible) fallback.
 
@@ -69,7 +69,7 @@ Simple REST endpoint: `POST /investigations` with an `InvestigationRequest` body
 
 ### 2.1 Port
 
-`InvestigationKnowledgeBase` (in `prism-domain`):
+`MemoryPort` (in `prism-domain`):
 
 ```java
 remember(Investigation)      — store a concluded investigation
@@ -80,12 +80,12 @@ Both are **best-effort** (never fail an investigation): `findSimilar` never thro
 
 ### 2.2 Implementations (selected by `prism.knowledge.store`)
 
-- `InMemoryInvestigationKnowledgeBase` — token-overlap ranking, in-process; for local dev (no DB/embeddings).
-- `PgVectorKnowledgeAdapter` (default) — embeds via a Spring AI `EmbeddingModel` (Gemini), stores in the `investigation_embeddings` pgvector table (unspecified `vector` dimension, so model-agnostic), searches by cosine distance. Plain JDBC/SQL. Embedding calls inherit Spring AI's retry (backoff, 429-aware) but have no model rotation.
+- `TokenOverlapMemory` — token-overlap ranking, in-process; for local dev (no DB/embeddings).
+- `PgVectorMemory` (default) — embeds via a Spring AI `EmbeddingModel` (Gemini), stores in the `investigation_embeddings` pgvector table (unspecified `vector` dimension, so model-agnostic), searches by cosine distance. Plain JDBC/SQL. Embedding calls inherit Spring AI's retry (backoff, 429-aware) but have no model rotation.
 
 ### 2.3 Wired into the flow
 
-The reasoning step set gains `SearchPastInvestigations` + the `search_past_investigations` tool (the system prompt encourages calling it early); the loop dispatches it to the knowledge base and records a `MEMORY` `Signal`. `RememberingInvestigateUseCase` (decorator) stores each concluded investigation. Runbooks emerge from usage — no manual authoring required.
+The reasoning step set gains `SearchPastInvestigations` + the `search_past_investigations` tool (the system prompt encourages calling it early); the loop dispatches it to the knowledge base and records a `MEMORY` `Signal`. `RememberingInvestigationRunner` (decorator) stores each concluded investigation. Runbooks emerge from usage — no manual authoring required.
 
 ---
 
@@ -97,13 +97,16 @@ The reasoning step set gains `SearchPastInvestigations` + the `search_past_inves
 
 `AlertConsumer` listens to `prism.alerts` topic. Deserializes an `AlertEvent` (Avro schema in Schema Registry), constructs an `InvestigationRequest`, and submits it to the application use case.
 
-### 3.2 Async investigation
+### 3.2 Async investigation (done)
 
-Investigations become async. The REST endpoint returns `202 Accepted` with an investigation ID; clients poll `GET /investigations/{id}` for status and result.
-
-### 3.3 Observability of the agent
-
-Instrument the investigation loop with Langfuse traces so each tool call, model response, and final conclusion is traceable and scoreable. This is the feedback loop that lets you judge quality before trusting autonomous runs.
+Investigations run asynchronously. The inbound side splits into a command port
+(`InvestigationCommandsUseCase` — `submit` schedules the run on a virtual-thread
+worker and returns an `InvestigationId`; `handle` runs inline) and a query port
+(`InvestigationQueriesUseCase` — `findById`, `recent`). `InvestigationCommandsService`
+opens the aggregate, persists it `PENDING`, and schedules the loop; the loop itself
+(`InvestigationLoop`) is the `InvestigationRunner` SPI, wrapped by the observability
+and memory decorators. REST: `POST /investigations` → `202 Accepted` + id;
+`GET /investigations/{id}` polls status/result; `GET /investigations?limit=` lists recent.
 
 ---
 
@@ -154,7 +157,13 @@ SSE over HTTPS. The MCP client (Claude Code/Desktop) opens a persistent SSE conn
 
 ---
 
-## Phase 5 — Hardening
+## Phase 5 — Hardening & Evaluation
+
+### 5.1 Observability of the agent
+
+Instrument the investigation loop with Langfuse traces so each tool call, model response, and final conclusion is traceable and scoreable. This is the feedback loop that lets you judge quality before trusting autonomous runs.
+
+### 5.2 Hardening
 
 - Cost tracking per investigation (token counts → Langfuse metadata)
 - Rate limiting on the investigation endpoint

@@ -49,7 +49,7 @@ A conventional RAG pipeline retrieves documents before the model reasons. That w
 
 prism.ai uses **agentic tool-use** instead. The application drives a loop: it asks the model for the next step given the context so far, executes that step, incorporates the result, and continues until the model reaches a conclusion. Each step informs the next.
 
-The loop itself is core business logic and lives in the application layer, not in the model adapter. The model only decides *one step at a time* — gather a specific piece of evidence, or conclude — and the application orchestrates everything else. The model and provider are configuration-driven (Google Gemini by default), with a configurable primary + fallback model list.
+The loop itself is core business logic and lives in the application layer, not in the model adapter. The model only decides *one step at a time* — gather a specific piece of evidence, or conclude — and the application orchestrates everything else. The model and provider are configuration-driven (Google Gemini by default), from a configurable model list that is retried with round-robin rotation on error — including a cross-provider Groq fallback.
 
 ### Investigation loop
 
@@ -72,6 +72,31 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
 ```
 
 A typical investigation: detect an error-rate spike → pull correlated logs → find an exemplar trace → identify the failing span and dependency. No manual pivoting between dashboards. A step limit guarantees the loop always terminates.
+
+### Asynchronous execution
+
+That loop can take many model + telemetry round-trips, so it never runs on the request thread. The inbound side is split **command/query (CQRS)**: a command port submits work, a query port reads results. `submit` persists the investigation as `PENDING`, schedules the loop on a virtual-thread worker, and returns an id immediately (`202 Accepted`); clients poll the query port for status and result. The same two ports are what the Kafka consumer (Phase 3) and MCP server (Phase 4) drive — in-process, never over HTTP.
+
+```
+ POST /investigations ──▶ InvestigationCommandsUseCase.submit
+                              │  open aggregate, save PENDING ──▶ InvestigationRepository ──▶ Postgres
+                              │  schedule on virtual-thread worker
+                              └▶ returns 202 + { id }              (does not block)
+
+ ┌──────────────────────── background worker ─────────────────────────────┐
+ │  ObservedInvestigationRunner  (span + metrics + lifecycle logs)         │
+ │    └▶ RememberingInvestigationRunner  (store on conclude → MemoryPort)  │
+ │         └▶ InvestigationLoop   ← the reasoning loop above               │
+ │              │  ReasoningPort ▶ Metrics/Logs/Tracing/Memory ports       │
+ │              └▶ save CONCLUDED / FAILED ──▶ InvestigationRepository     │
+ └────────────────────────────────────────────────────────────────────────┘
+
+ GET /investigations/{id}  ──▶ InvestigationQueriesUseCase.findById ──▶ Repository ──▶ Postgres
+ GET /investigations?limit ──▶ InvestigationQueriesUseCase.recent
+        (poll: PENDING ─▶ CONCLUDED / FAILED)
+```
+
+`InvestigationLoop` is the loop; it's wrapped — for both sync and async runs — by the observability and memory decorators (`InvestigationRunner` SPI), so cross-cutting concerns apply identically regardless of how a run was triggered. The domain and application layers stay free of any threading or framework code; the executor is wired at the composition root.
 
 ### Growing memory
 

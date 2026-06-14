@@ -24,11 +24,12 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * {@link ReasoningPort} backed by Spring AI.
  *
- * <p>Internal tool execution is disabled, so each call asks the model for the
- * single next step and returns its tool choice to the application loop rather
- * than executing it here. Each instance targets one model id (supplied by
- * configuration, overriding the provider default per call); compose several
- * instances with {@link RetryingReasoningPort} for primary/fallback selection.
+ * <p>The framework's agentic tool-execution loop is not used: each call asks the
+ * model for the single next step and returns its tool choice to the application
+ * loop rather than executing it here. Each instance targets one model id (supplied
+ * by configuration, overriding the provider default per call); compose several
+ * instances with {@link RetryingReasoningPort}, which retries and rotates models
+ * round-robin on error.
  */
 public class SpringAiReasoningAdapter implements ReasoningPort {
 

@@ -64,7 +64,7 @@ Every module must have tests. The bar is:
 ## Investigation loop
 
 The investigation loop is the core of the business, so it lives in the application
-layer (`InvestigationService`), inside the hexagon — not in any adapter.
+layer (`InvestigationLoop`), inside the hexagon — not in any adapter.
 
 The split of responsibility:
 
@@ -72,11 +72,20 @@ The split of responsibility:
   investigation so far: gather a specific piece of evidence, or conclude. This is
   the only part that knows a provider's tool-use protocol; it is implemented by an
   adapter and returns a `ReasoningStep`.
-- **`InvestigationLoop`** owns the loop. It repeatedly asks for the next step,
-  dispatches tool requests to the telemetry ports (`MetricsPort`, `LogsPort`,
-  `TracingPort`) or the memory port (`MemoryPort`), records each
-  `Signal` on the aggregate, and ends when a `Conclusion` arrives or the `maxSteps`
-  bound is hit.
+- **`InvestigationLoop`** (implements the `InvestigationRunner` SPI) owns the loop.
+  It repeatedly asks for the next step, dispatches tool requests to the telemetry
+  ports (`MetricsPort`, `LogsPort`, `TracingPort`) or the memory port (`MemoryPort`),
+  records each `Signal` on the aggregate, and ends when a `Conclusion` arrives or
+  the `maxSteps` bound is hit. A failed telemetry tool call is best-effort — recorded
+  as an error `Signal` so the model can retry — while a reasoning failure fails the run.
+
+**Async + CQRS at the boundary.** Two inbound ports split the command and query
+sides: `InvestigationCommandsUseCase` (`submit` runs the loop on a virtual-thread
+worker and returns an `InvestigationId` immediately; `handle` runs it inline) and
+`InvestigationQueriesUseCase` (`findById`, `recent`). `InvestigationCommandsService`
+opens the aggregate, persists it `PENDING`, and schedules the run; the cross-cutting
+decorators (`ObservedInvestigationRunner`, `RememberingInvestigationRunner`) wrap the
+`InvestigationRunner`, so observability and memory apply to sync and async runs alike.
 
 ```
 ReasoningStep (sealed):
