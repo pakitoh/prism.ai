@@ -136,9 +136,9 @@ prism.ai runs in the cloud with direct access to the company's observability sta
 
 **Streamable HTTP** on a single endpoint (`POST`/`GET /mcp`): POST carries JSON-RPC requests; the server may upgrade the same connection to SSE for notifications/progress; sessions are tracked via the `Mcp-Session-Id` header; the revision is negotiated via `MCP-Protocol-Version` (target `2025-06-18`). Apply the spec's HTTP-transport hardening: `Origin` validation (DNS-rebinding protection) and TLS at the edge. The deprecated HTTP+SSE two-endpoint transport is not used.
 
-### 4.3 McpServerAdapter (inbound)
+### 4.3 MCP tools adapter (inbound)
 
-New inbound adapter in `prism-adapters-in`, built on the **Spring AI MCP server (WebMVC) starter** (the servlet variant matching the app's stack), which wraps the MCP Java SDK and provides the Streamable HTTP transport. It depends only on the inbound ports `InvestigationCommandsUseCase` + `InvestigationQueriesUseCase` — the same spine REST and the Kafka consumer use — and translates only, no business logic.
+`InvestigationMcpTools` in `prism-adapters-in` — `@Tool`-annotated methods exposed as MCP tools by the **Spring AI MCP server (WebMVC) starter** (the servlet variant matching the app's stack), which wraps the MCP Java SDK and provides the Streamable HTTP transport. It depends only on the inbound ports `InvestigationCommandsUseCase` + `InvestigationQueriesUseCase` — the same spine REST and the Kafka consumer use — and translates only, no business logic. Registered at the composition root as a `ToolCallbackProvider` bean (`McpConfiguration`).
 
 Tools exposed (mapped to the ports), returning 2025-06-18 **structured output** (`outputSchema` / `structuredContent`):
 

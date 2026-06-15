@@ -127,6 +127,12 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <!-- Retain method parameter names (javac -parameters) so Spring AI
+                             derives MCP tool argument names (query, service, ...) by reflection
+                             rather than arg0/arg1. -->
+                        <parameters>true</parameters>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

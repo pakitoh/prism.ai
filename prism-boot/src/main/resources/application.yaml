@@ -34,8 +34,24 @@ spring:
       observations:
         log-prompt: true       # logs the full assembled prompt (messages)
         log-completion: true   # logs the model's completion
+    mcp:
+      server:
+        # Exposes the investigation tools over Streamable HTTP at /mcp. `protocol` MUST be
+        # set explicitly: the transport autoconfig gates on @ConditionalOnProperty(protocol=
+        # STREAMABLE, matchIfMissing=false), so the property default alone doesn't activate it.
+        # Tools come from the ToolCallbackProvider bean (McpConfiguration).
+        protocol: STREAMABLE
+        name: prism
+        version: 0.1.0
+        instructions: >
+          prism.ai investigates production observability incidents over Prometheus,
+          Loki and Tempo. Use 'investigate' to start one (it returns an id), then poll
+          'get_investigation'; use 'list_recent_investigations' to spot recurring patterns.
 
 prism:
+  mcp:
+    # When set, the MCP endpoint (/mcp) requires a matching X-API-Key header; blank = open (dev).
+    api-key: ${PRISM_MCP_API_KEY:secret}
   knowledge:
     # 'pgvector' = semantic recall via the native Gemini EmbeddingModel + pgvector;
     # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev — set
