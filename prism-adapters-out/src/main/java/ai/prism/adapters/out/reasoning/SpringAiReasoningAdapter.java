@@ -124,9 +124,10 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         if (signals.isEmpty()) {
             out.append("\nNo evidence gathered yet. Decide the first step.");
         } else {
-            out.append("\nEvidence gathered so far:\n");
-            for (Signal signal : signals) {
-                out.append("- [").append(signal.type()).append("] ")
+            out.append("\nEvidence gathered so far (referenceable by the leading number):\n");
+            for (int i = 0; i < signals.size(); i++) {
+                Signal signal = signals.get(i);
+                out.append("- [").append(i + 1).append("] [").append(signal.type()).append("] ")
                         .append(signal.query()).append(" =>\n")
                         .append(signal.content()).append('\n');
             }

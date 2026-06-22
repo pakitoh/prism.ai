@@ -36,7 +36,7 @@ public class PrometheusAdapter implements MetricsPort {
                 + "&end=" + window.to().getEpochSecond()
                 + "&step=" + step(window));
         String body = http.get(uri);
-        return new Signal(SignalType.METRIC, promQl, body, clock.instant());
+        return Signal.over(SignalType.METRIC, promQl, body, clock.instant(), window);
     }
 
     /** A step that keeps the result around {@value #TARGET_POINTS} points, in seconds. */

@@ -24,7 +24,7 @@ class ObservedReasoningPortTest {
 
     @Test
     void recordsAStepObservationTaggedAsConclusion() {
-        ReasoningStep step = new Conclusion(new Finding("rc", "ev", "act", Confidence.LOW));
+        ReasoningStep step = new Conclusion(Finding.of("rc", "ev", "act", Confidence.LOW));
         ReasoningPort port = new ObservedReasoningPort(ctx -> step, registry);
 
         ReasoningStep nextStep = port.nextStep(context);

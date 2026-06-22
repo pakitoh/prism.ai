@@ -1,5 +1,6 @@
 package ai.prism.adapters.out.http;
 
+import ai.prism.application.port.out.TelemetryException;
 import java.net.URI;
 
 /**
@@ -23,7 +24,7 @@ public class RecordingHttpExecutor implements HttpExecutor {
 
     public static RecordingHttpExecutor failing(String message) {
         RecordingHttpExecutor executor = new RecordingHttpExecutor();
-        executor.toThrow = new HttpRequestException(message);
+        executor.toThrow = new TelemetryException(TelemetryException.Kind.QUERY_REJECTED, message, null);
         return executor;
     }
 }

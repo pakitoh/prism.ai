@@ -5,6 +5,7 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+    uid: prometheus                    # Explicit, stable UID — matches prism.grafana.prometheus-uid
     isDefault: true
   - name: Tempo
     type: tempo
@@ -25,6 +26,7 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
+    uid: loki                          # Explicit, stable UID — matches prism.grafana.loki-uid
     jsonData:
       derivedFields:
         - datasourceUid: tempo         # Must match the 'uid' fields of Tempo below

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS investigations (
     finding_evidence            TEXT,
     finding_recommended_action  TEXT,
     finding_confidence          TEXT,
+    finding_key_signal_index    INT,
     failure_reason              TEXT,
     signals                     JSONB       NOT NULL DEFAULT '[]',
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()

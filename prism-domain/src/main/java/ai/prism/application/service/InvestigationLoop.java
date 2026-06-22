@@ -6,6 +6,7 @@ import ai.prism.application.port.out.InvestigationRepository;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
 import ai.prism.application.port.out.ReasoningPort;
+import ai.prism.application.port.out.TelemetryException;
 import ai.prism.application.port.out.TracingPort;
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
@@ -118,11 +119,40 @@ public class InvestigationLoop implements InvestigationRunner {
     private void dispatch(Investigation investigation, SignalType type, String query, Supplier<Signal> call) {
         try {
             investigation.recordSignal(call.get());
+        } catch (TelemetryException failure) {
+            investigation.recordSignal(Signal.of(type, query, toolFailure(type, failure), clock.instant()));
         } catch (RuntimeException failure) {
-            investigation.recordSignal(new Signal(type, query,
+            investigation.recordSignal(Signal.of(type, query,
                     "Query failed: " + describe(failure) + ". Adjust the query and try again.",
                     clock.instant()));
         }
+    }
+
+    /**
+     * Frames a telemetry failure for the model. A rejected query is the model's to fix. An
+     * unreachable/erroring datasource is infrastructure: we say so explicitly and withhold the
+     * raw transport error, so the model does not mistake it for evidence (e.g. search logs for
+     * "ConnectException") or infer a service outage from a tooling failure.
+     */
+    private static String toolFailure(SignalType type, TelemetryException failure) {
+        return switch (failure.kind()) {
+            case QUERY_REJECTED -> "The datasource rejected this query: " + describe(failure)
+                    + ". The query is likely malformed — correct it and try again.";
+            case DATASOURCE_UNREACHABLE, DATASOURCE_ERROR -> "The " + sourceName(type)
+                    + " datasource is unavailable right now. This is an infrastructure failure — not a"
+                    + " problem with the query and not evidence about the target service. Do not change"
+                    + " the query in response, and do not conclude the service is down from this; rely on"
+                    + " other evidence.";
+        };
+    }
+
+    private static String sourceName(SignalType type) {
+        return switch (type) {
+            case METRIC -> "metrics (Prometheus)";
+            case LOG -> "logs (Loki)";
+            case TRACE -> "tracing (Tempo)";
+            case MEMORY -> "memory";
+        };
     }
 
     private static String describe(RuntimeException failure) {

@@ -79,7 +79,26 @@ class ReasoningStepMapperTest {
         assertThat(step).isInstanceOfSatisfying(Conclusion.class, c -> {
             assertThat(c.finding().rootCause()).isEqualTo("DB pool exhausted");
             assertThat(c.finding().confidence()).isEqualTo(Confidence.HIGH);
+            assertThat(c.finding().keySignalIndex()).isEmpty();
         });
+    }
+
+    @Test
+    void mapsKeySignalIndexFromOneBasedToZeroBased() {
+        var step = mapper.map(ReasoningToolNames.CONCLUDE, Map.of(
+                "rootCause", "rc", "evidence", "ev", "recommendedAction", "act",
+                "confidence", "high", "keySignalIndex", 3));
+
+        assertThat(((Conclusion) step).finding().keySignalIndex()).hasValue(2);
+    }
+
+    @Test
+    void ignoresANonPositiveKeySignalIndex() {
+        var step = mapper.map(ReasoningToolNames.CONCLUDE, Map.of(
+                "rootCause", "rc", "evidence", "ev", "recommendedAction", "act",
+                "confidence", "high", "keySignalIndex", 0));
+
+        assertThat(((Conclusion) step).finding().keySignalIndex()).isEmpty();
     }
 
     @Test

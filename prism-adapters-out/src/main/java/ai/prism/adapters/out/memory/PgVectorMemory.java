@@ -89,10 +89,10 @@ public class PgVectorMemory implements MemoryPort {
         try {
             String content = recall(query);
             log.debug("Memory recall for \"{}\": {}", query, content);
-            return new Signal(SignalType.MEMORY, query, content, clock.instant());
+            return Signal.of(SignalType.MEMORY, query, content, clock.instant());
         } catch (RuntimeException failure) {
             log.warn("Memory recall failed for \"{}\": {}", query, failure.toString());
-            return new Signal(SignalType.MEMORY, query, "Memory is currently unavailable.", clock.instant());
+            return Signal.of(SignalType.MEMORY, query, "Memory is currently unavailable.", clock.instant());
         }
     }
 

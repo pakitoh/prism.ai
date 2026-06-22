@@ -30,7 +30,8 @@ final class ReasoningTools {
     record SearchPastInvestigationsInput(String query) {
     }
 
-    record ConcludeInput(String rootCause, String evidence, String recommendedAction, String confidence) {
+    record ConcludeInput(String rootCause, String evidence, String recommendedAction, String confidence,
+                         Integer keySignalIndex) {
     }
 
     private ReasoningTools() {
@@ -66,7 +67,10 @@ final class ReasoningTools {
                         SearchPastInvestigationsInput.class),
                 tool(ReasoningToolNames.CONCLUDE,
                         "End the investigation. Call this once the evidence supports a root cause. "
-                                + "confidence must be one of LOW, MEDIUM, HIGH.",
+                                + "confidence must be one of LOW, MEDIUM, HIGH. Optionally set "
+                                + "keySignalIndex to the number ([N]) of the single gathered signal "
+                                + "from 'Evidence gathered so far' that best demonstrates the root "
+                                + "cause; omit it if no single signal stands out.",
                         ConcludeInput.class));
     }
 

@@ -39,7 +39,7 @@ public class LokiAdapter implements LogsPort {
                 + "&limit=" + LIMIT
                 + "&direction=backward");
         String body = http.get(uri);
-        return new Signal(SignalType.LOG, logQl, body, clock.instant());
+        return Signal.over(SignalType.LOG, logQl, body, clock.instant(), window);
     }
 
     private static long epochNanos(Instant instant) {

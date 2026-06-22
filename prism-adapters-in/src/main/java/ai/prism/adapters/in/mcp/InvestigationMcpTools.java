@@ -2,13 +2,16 @@ package ai.prism.adapters.in.mcp;
 
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
+import ai.prism.application.port.out.DashboardLinkPort;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationId;
 import ai.prism.domain.investigation.InvestigationRequest;
 import ai.prism.domain.investigation.InvestigationStatus;
 import ai.prism.domain.investigation.RequestSource;
+import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.TimeWindow;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -28,10 +31,13 @@ public class InvestigationMcpTools {
 
     private final InvestigationCommandsUseCase commands;
     private final InvestigationQueriesUseCase queries;
+    private final DashboardLinkPort dashboardLinks;
 
-    public InvestigationMcpTools(InvestigationCommandsUseCase commands, InvestigationQueriesUseCase queries) {
+    public InvestigationMcpTools(InvestigationCommandsUseCase commands, InvestigationQueriesUseCase queries,
+                                 DashboardLinkPort dashboardLinks) {
         this.commands = Objects.requireNonNull(commands, "commands must not be null");
         this.queries = Objects.requireNonNull(queries, "queries must not be null");
+        this.dashboardLinks = Objects.requireNonNull(dashboardLinks, "dashboardLinks must not be null");
     }
 
     @Tool(name = "investigate", description = """
@@ -56,7 +62,7 @@ public class InvestigationMcpTools {
     public InvestigationView getInvestigation(
             @ToolParam(description = "Investigation id returned by investigate") String id) {
         return queries.findById(InvestigationId.of(id))
-                .map(InvestigationView::from)
+                .map(investigation -> InvestigationView.from(investigation, dashboardLinks))
                 .orElseGet(() -> InvestigationView.notFound(id));
     }
 
@@ -65,7 +71,9 @@ public class InvestigationMcpTools {
     public List<InvestigationView> listRecentInvestigations(
             @ToolParam(required = false, description = "Maximum number to return (default 20)") Integer limit) {
         int effective = limit == null || limit < 1 ? DEFAULT_RECENT_LIMIT : limit;
-        return queries.recent(effective).stream().map(InvestigationView::from).toList();
+        return queries.recent(effective).stream()
+                .map(investigation -> InvestigationView.from(investigation, dashboardLinks))
+                .toList();
     }
 
     private static Optional<TimeWindow> window(String from, String to) {
@@ -83,7 +91,7 @@ public class InvestigationMcpTools {
     public record AcceptedInvestigation(String id, String status) {
     }
 
-    /** MCP view of an investigation's status and (if any) finding. */
+    /** MCP view of an investigation's status and (if any) finding, with Grafana deep links. */
     public record InvestigationView(
             String id,
             String status,
@@ -91,22 +99,45 @@ public class InvestigationMcpTools {
             String recommendedAction,
             String confidence,
             int signalsGathered,
-            String failureReason) {
+            String failureReason,
+            List<SignalLink> signals,
+            String primaryLink) {
 
-        static InvestigationView from(Investigation investigation) {
+        static InvestigationView from(Investigation investigation, DashboardLinkPort links) {
             Finding finding = investigation.finding().orElse(null);
+            List<SignalLink> signals = investigation.signals().stream()
+                    .map(signal -> new SignalLink(signal.type().name(), signal.query(), linkOf(signal, links)))
+                    .toList();
             return new InvestigationView(
                     investigation.id().toString(),
                     investigation.status().name(),
                     finding != null ? finding.rootCause() : null,
                     finding != null ? finding.recommendedAction() : null,
                     finding != null ? finding.confidence().name() : null,
-                    investigation.signals().size(),
-                    investigation.failureReason().orElse(null));
+                    signals.size(),
+                    investigation.failureReason().orElse(null),
+                    signals,
+                    primaryLink(finding, signals));
         }
 
         static InvestigationView notFound(String id) {
-            return new InvestigationView(id, "NOT_FOUND", null, null, null, 0, null);
+            return new InvestigationView(id, "NOT_FOUND", null, null, null, 0, null, List.of(), null);
         }
+
+        private static String linkOf(Signal signal, DashboardLinkPort links) {
+            return links.dashboardLink(signal).map(URI::toString).orElse(null);
+        }
+
+        private static String primaryLink(Finding finding, List<SignalLink> signals) {
+            if (finding == null || finding.keySignalIndex().isEmpty()) {
+                return null;
+            }
+            int i = finding.keySignalIndex().getAsInt();
+            return i >= 0 && i < signals.size() ? signals.get(i).link() : null;
+        }
+    }
+
+    /** A gathered signal with its Grafana deep link ({@code link} is null when none exists). */
+    public record SignalLink(String type, String query, String link) {
     }
 }

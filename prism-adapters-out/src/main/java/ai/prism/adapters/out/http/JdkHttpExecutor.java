@@ -1,5 +1,6 @@
 package ai.prism.adapters.out.http;
 
+import ai.prism.application.port.out.TelemetryException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -38,18 +39,23 @@ public class JdkHttpExecutor implements HttpExecutor {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
             if (status < 200 || status >= 300) {
-                throw new HttpRequestException(
-                        "GET " + uri + " returned HTTP " + status + ": " + truncate(response.body()));
+                TelemetryException.Kind kind = status >= 400 && status < 500
+                        ? TelemetryException.Kind.QUERY_REJECTED      // 4xx: the query is wrong
+                        : TelemetryException.Kind.DATASOURCE_ERROR;   // 5xx and others: backend failed
+                throw new TelemetryException(kind,
+                        "GET " + uri + " returned HTTP " + status + ": " + truncate(response.body()), null);
             }
             return response.body();
-        } catch (IOException transport) {
+        } catch (IOException transport) {                             // refused / DNS / timeout
             String detail = transport.getMessage() != null
                     ? transport.getMessage()
                     : transport.getClass().getSimpleName();
-            throw new HttpRequestException("GET " + uri + " failed: " + detail, transport);
+            throw new TelemetryException(TelemetryException.Kind.DATASOURCE_UNREACHABLE,
+                    "GET " + uri + " failed: " + detail, transport);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new HttpRequestException("GET " + uri + " was interrupted", interrupted);
+            throw new TelemetryException(TelemetryException.Kind.DATASOURCE_UNREACHABLE,
+                    "GET " + uri + " was interrupted", interrupted);
         }
     }
 

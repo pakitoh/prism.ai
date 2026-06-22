@@ -13,13 +13,13 @@ class ValueObjectValidationTest {
 
     @Test
     void signalRejectsBlankQuery() {
-        assertThatThrownBy(() -> new Signal(SignalType.LOG, " ", "content", Instant.now()))
+        assertThatThrownBy(() -> Signal.of(SignalType.LOG, " ", "content", Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void findingRejectsBlankRootCause() {
-        assertThatThrownBy(() -> new Finding("", "evidence", "action", Confidence.LOW))
+        assertThatThrownBy(() -> Finding.of("", "evidence", "action", Confidence.LOW))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

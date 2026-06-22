@@ -33,7 +33,7 @@ public class TempoAdapter implements TracingPort {
     public Signal getTrace(String traceId) {
         URI uri = URI.create(baseUrl + "/api/traces/" + HttpUris.encode(traceId));
         String body = http.get(uri);
-        return new Signal(SignalType.TRACE, traceId, body, clock.instant());
+        return Signal.of(SignalType.TRACE, traceId, body, clock.instant());
     }
 
     @Override
@@ -45,6 +45,6 @@ public class TempoAdapter implements TracingPort {
                 + "&end=" + window.to().getEpochSecond()
                 + "&limit=" + SEARCH_LIMIT);
         String body = http.get(uri);
-        return new Signal(SignalType.TRACE, tag, body, clock.instant());
+        return Signal.over(SignalType.TRACE, tag, body, clock.instant(), window);
     }
 }

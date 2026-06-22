@@ -23,7 +23,7 @@ class TokenOverlapMemoryTest {
     private static Investigation concluded(String query, String rootCause) {
         Investigation investigation = Investigation.open(InvestigationRequest.manual(query));
         investigation.start();
-        investigation.conclude(new Finding(rootCause, "evidence", "raise the pool", Confidence.HIGH));
+        investigation.conclude(Finding.of(rootCause, "evidence", "raise the pool", Confidence.HIGH));
         return investigation;
     }
 

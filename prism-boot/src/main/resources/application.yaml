@@ -62,7 +62,7 @@ prism:
     # on the same model before raising. RetryingReasoningPort then rotates to the next
     # model for up to max-attempts total reasoning attempts. One reasoning attempt may
     # therefore represent up to 3 HTTP calls, so the worst-case total is max-attempts * 3.
-    max-attempts: ${PRISM_MAX_ATTEMPTS:4}
+    max-attempts: ${PRISM_MAX_ATTEMPTS:24}
     # Ordered list — first entry is tried first. Entries with only 'id' use the
     # auto-configured ChatModel (Spring AI starter). Entries with 'base-url' and 'api-key'
     # target that OpenAI-compatible endpoint; both fields are required or startup fails.
@@ -90,32 +90,17 @@ prism:
     prometheus-url: ${PRISM_PROMETHEUS_URL:http://localhost:9090}
     loki-url: ${PRISM_LOKI_URL:http://localhost:3100}
     tempo-url: ${PRISM_TEMPO_URL:http://localhost:3200}
+  grafana:
+    # Base URL of the Grafana that investigation results deep-link into, plus the
+    # datasource UIDs to target (must match the UIDs of the provisioned Grafana
+    # datasources). A blank uid disables links for that source. No network call is
+    # made — these only build /explore URLs.
+    url: ${PRISM_GRAFANA_URL:http://localhost:3000}
+    prometheus-uid: ${PRISM_PROMETHEUS_UID:prometheus}
+    loki-uid: ${PRISM_LOKI_UID:loki}
+    tempo-uid: ${PRISM_TEMPO_UID:tempo}
   investigation:
-    max-steps: ${PRISM_MAX_STEPS:24}
-
-# Observability: export metrics, traces and logs via OTLP to the collector
-# (http://localhost:4318 from the host; otel-collector:4318 inside prism-net).
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-  tracing:
-    sampling:
-      probability: ${PRISM_TRACE_SAMPLING:1.0}
-  otlp:
-    tracing:
-      endpoint: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/traces
-    metrics:
-      export:
-        url: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/metrics
-        step: 10s
-        # Micrometer's OTLP registry is separate from the trace/log resource,
-        # so set service.name explicitly to keep all three consistent.
-        resource-attributes:
-          service.name: ${spring.application.name}
-    logging:
-      endpoint: ${PRISM_OTLP_HTTP:http://localhost:4318}/v1/logs
+    max-steps: ${PRISM_MAX_STEPS:128}
 
 logging:
   level:

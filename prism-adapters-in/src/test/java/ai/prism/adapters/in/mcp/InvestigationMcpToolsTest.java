@@ -7,15 +7,20 @@ import static org.mockito.Mockito.when;
 
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
+import ai.prism.application.port.out.DashboardLinkPort;
 import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationId;
 import ai.prism.domain.investigation.InvestigationRequest;
 import ai.prism.domain.investigation.RequestSource;
+import ai.prism.domain.investigation.Signal;
+import ai.prism.domain.investigation.SignalType;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -29,9 +34,11 @@ class InvestigationMcpToolsTest {
     private InvestigationCommandsUseCase commands;
     @Mock
     private InvestigationQueriesUseCase queries;
+    @Mock
+    private DashboardLinkPort links;
 
     private InvestigationMcpTools tools() {
-        return new InvestigationMcpTools(commands, queries);
+        return new InvestigationMcpTools(commands, queries, links);
     }
 
     @Test
@@ -70,7 +77,7 @@ class InvestigationMcpToolsTest {
     void getInvestigationMapsAConcludedInvestigation() {
         Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
         concluded.start();
-        concluded.conclude(new Finding("DB pool exhausted", "ev", "raise the pool", Confidence.HIGH));
+        concluded.conclude(Finding.of("DB pool exhausted", "ev", "raise the pool", Confidence.HIGH));
         when(queries.findById(any())).thenReturn(Optional.of(concluded));
 
         InvestigationMcpTools.InvestigationView view = tools().getInvestigation(concluded.id().toString());
@@ -78,6 +85,23 @@ class InvestigationMcpToolsTest {
         assertThat(view.status()).isEqualTo("CONCLUDED");
         assertThat(view.rootCause()).isEqualTo("DB pool exhausted");
         assertThat(view.confidence()).isEqualTo("HIGH");
+    }
+
+    @Test
+    void getInvestigationExposesSignalLinksAndPrimaryLink() {
+        Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
+        concluded.start();
+        concluded.recordSignal(Signal.of(SignalType.LOG, "{app=\"checkout\"} |= \"ERROR\"", "pool exhausted", Instant.now()));
+        concluded.conclude(new Finding("DB pool exhausted", "ev", "raise the pool",
+                Confidence.HIGH, OptionalInt.of(0)));
+        when(queries.findById(any())).thenReturn(Optional.of(concluded));
+        when(links.dashboardLink(any())).thenReturn(Optional.of(URI.create("http://grafana/explore?y=2")));
+
+        InvestigationMcpTools.InvestigationView view = tools().getInvestigation(concluded.id().toString());
+
+        assertThat(view.signals()).singleElement().satisfies(s ->
+                assertThat(s.link()).isEqualTo("http://grafana/explore?y=2"));
+        assertThat(view.primaryLink()).isEqualTo("http://grafana/explore?y=2");
     }
 
     @Test

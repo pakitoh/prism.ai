@@ -33,7 +33,7 @@ class RememberingInvestigationRunnerTest {
     void remembersConcludedInvestigations() {
         Investigation concluded = Investigation.open(REQUEST);
         concluded.start();
-        concluded.conclude(new Finding("rc", "ev", "act", Confidence.HIGH));
+        concluded.conclude(Finding.of("rc", "ev", "act", Confidence.HIGH));
 
         new RememberingInvestigationRunner(investigation -> concluded, knowledgeBase).run(Investigation.open(REQUEST));
 
@@ -55,7 +55,7 @@ class RememberingInvestigationRunnerTest {
     void doesNotFailTheInvestigationWhenRememberingThrows() {
         Investigation concluded = Investigation.open(REQUEST);
         concluded.start();
-        concluded.conclude(new Finding("rc", "ev", "act", Confidence.HIGH));
+        concluded.conclude(Finding.of("rc", "ev", "act", Confidence.HIGH));
         MemoryPort throwing = new MemoryPort() {
             @Override
             public void remember(Investigation investigation) {

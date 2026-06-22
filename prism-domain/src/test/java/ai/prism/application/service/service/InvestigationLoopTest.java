@@ -12,6 +12,7 @@ import ai.prism.application.port.out.InvestigationRepository;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
 import ai.prism.application.port.out.ReasoningPort;
+import ai.prism.application.port.out.TelemetryException;
 import ai.prism.application.port.out.TracingPort;
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.QueryMetrics;
@@ -75,19 +76,19 @@ class InvestigationLoopTest {
     }
 
     private static Signal metricSignal() {
-        return new Signal(SignalType.METRIC, "rate(http_errors_total[5m])", "0.42", WINDOW.from());
+        return Signal.of(SignalType.METRIC, "rate(http_errors_total[5m])", "0.42", WINDOW.from());
     }
 
     private static Signal logSignal() {
-        return new Signal(SignalType.LOG, "{app=\"checkout\"} |= \"ERROR\"", "pool exhausted", WINDOW.from());
+        return Signal.of(SignalType.LOG, "{app=\"checkout\"} |= \"ERROR\"", "pool exhausted", WINDOW.from());
     }
 
     private static Finding finding() {
-        return new Finding("DB pool exhausted", "errors track pool saturation", "raise the pool", Confidence.HIGH);
+        return Finding.of("DB pool exhausted", "errors track pool saturation", "raise the pool", Confidence.HIGH);
     }
 
     private static Signal memorySignal() {
-        return new Signal(SignalType.MEMORY, "why is checkout-service erroring?",
+        return Signal.of(SignalType.MEMORY, "why is checkout-service erroring?",
                 "- \"past incident\" => DB pool exhausted (recommended: raise the pool)", WINDOW.from());
     }
 
@@ -184,6 +185,41 @@ class InvestigationLoopTest {
         assertThat(error.type()).isEqualTo(SignalType.LOG);
         assertThat(error.query()).isEqualTo("{app=\"checkout\"} |= \"a\" or |= \"b\"");
         assertThat(error.content()).contains("HTTP 400: parse error");
+    }
+
+    @Test
+    void framesAnUnreachableDatasourceAsInfrastructureNotEvidence() {
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new SearchLogs("{service=\"analysis-worker\"}", WINDOW),
+                new Conclusion(finding()));
+        when(logsPort.search(any(), any())).thenThrow(new TelemetryException(
+                TelemetryException.Kind.DATASOURCE_UNREACHABLE,
+                "GET http://loki:3100/loki/api/v1/query_range failed: ConnectException", null));
+
+        Investigation investigation = service.run(Investigation.open(request()));
+
+        Signal error = investigation.signals().get(0);
+        assertThat(error.content())
+                .contains("infrastructure failure")
+                .doesNotContain("ConnectException")   // raw transport text withheld
+                .doesNotContain("Adjust the query");   // no query-mutation nudge
+    }
+
+    @Test
+    void tellsTheModelToCorrectARejectedQuery() {
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new SearchLogs("{app=\"checkout\"} |= \"a\" or |= \"b\"", WINDOW),
+                new Conclusion(finding()));
+        when(logsPort.search(any(), any())).thenThrow(new TelemetryException(
+                TelemetryException.Kind.QUERY_REJECTED,
+                "GET http://loki:3100/... returned HTTP 400: parse error at line 1", null));
+
+        Investigation investigation = service.run(Investigation.open(request()));
+
+        Signal error = investigation.signals().get(0);
+        assertThat(error.content())
+                .contains("parse error")
+                .contains("correct it and try again");
     }
 
     @Test

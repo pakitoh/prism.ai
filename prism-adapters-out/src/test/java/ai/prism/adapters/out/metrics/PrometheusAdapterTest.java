@@ -4,7 +4,7 @@ import ai.prism.adapters.out.http.RecordingHttpExecutor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ai.prism.adapters.out.http.HttpRequestException;
+import ai.prism.application.port.out.TelemetryException;
 import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.SignalType;
 import ai.prism.domain.investigation.TimeWindow;
@@ -55,7 +55,7 @@ class PrometheusAdapterTest {
                 "http://prometheus:9090", Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> failing.queryRange("up", WINDOW))
-                .isInstanceOf(HttpRequestException.class)
+                .isInstanceOf(TelemetryException.class)
                 .hasMessageContaining("connection refused");
     }
 }

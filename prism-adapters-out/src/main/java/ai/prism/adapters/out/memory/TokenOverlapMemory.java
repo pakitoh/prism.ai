@@ -59,7 +59,7 @@ public class TokenOverlapMemory implements MemoryPort {
                 .limit(MAX_RESULTS)
                 .map(Scored::entry)
                 .toList();
-        return new Signal(SignalType.MEMORY, query, render(matches), clock.instant());
+        return Signal.of(SignalType.MEMORY, query, render(matches), clock.instant());
     }
 
     private static double similarity(Set<String> queryTokens, Entry entry) {

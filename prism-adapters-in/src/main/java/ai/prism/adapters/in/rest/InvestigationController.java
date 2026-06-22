@@ -2,6 +2,7 @@ package ai.prism.adapters.in.rest;
 
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
+import ai.prism.application.port.out.DashboardLinkPort;
 import ai.prism.domain.investigation.InvestigationId;
 import java.util.List;
 import java.util.Objects;
@@ -29,10 +30,14 @@ public class InvestigationController {
 
     private final InvestigationCommandsUseCase investigateCommands;
     private final InvestigationQueriesUseCase investigationQueries;
+    private final DashboardLinkPort dashboardLinks;
 
-    public InvestigationController(InvestigationCommandsUseCase investigateCommands, InvestigationQueriesUseCase investigationQueries) {
+    public InvestigationController(InvestigationCommandsUseCase investigateCommands,
+                                   InvestigationQueriesUseCase investigationQueries,
+                                   DashboardLinkPort dashboardLinks) {
         this.investigateCommands = Objects.requireNonNull(investigateCommands, "investigateCommands must not be null");
         this.investigationQueries = Objects.requireNonNull(investigationQueries, "investigationQueries must not be null");
+        this.dashboardLinks = Objects.requireNonNull(dashboardLinks, "dashboardLinks must not be null");
     }
 
     @PostMapping
@@ -44,7 +49,7 @@ public class InvestigationController {
     @GetMapping("/{id}")
     public ResponseEntity<InvestigationResponse> get(@PathVariable String id) {
         return investigationQueries.findById(InvestigationId.of(id))
-                .map(InvestigationResponse::from)
+                .map(investigation -> InvestigationResponse.from(investigation, dashboardLinks))
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -52,7 +57,7 @@ public class InvestigationController {
     @GetMapping
     public List<InvestigationResponse> recent(@RequestParam(defaultValue = "" + DEFAULT_RECENT_LIMIT) int limit) {
         return investigationQueries.recent(limit).stream()
-                .map(InvestigationResponse::from)
+                .map(investigation -> InvestigationResponse.from(investigation, dashboardLinks))
                 .toList();
     }
 }

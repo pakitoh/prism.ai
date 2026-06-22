@@ -19,7 +19,7 @@ class RetryingReasoningPortTest {
     private final InvestigationContext context =
             InvestigationContext.forRequest(InvestigationRequest.manual("why errors?"));
     private final ReasoningStep step =
-            new Conclusion(new Finding("root", "evidence", "action", Confidence.LOW));
+            new Conclusion(Finding.of("root", "evidence", "action", Confidence.LOW));
 
     private RetryingReasoningPort.Delegate succeeds(AtomicInteger calls) {
         return new RetryingReasoningPort.Delegate("ok-model", ctx -> {

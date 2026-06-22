@@ -19,7 +19,7 @@ class ObservedInvestigationRunnerTest {
     void recordsTheInvestigationTaggedBySourceAndOutcome() {
         Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
         concluded.start();
-        concluded.conclude(new Finding("DB pool exhausted", "ev", "raise the pool", Confidence.HIGH));
+        concluded.conclude(Finding.of("DB pool exhausted", "ev", "raise the pool", Confidence.HIGH));
 
         InvestigationRunner runner = new ObservedInvestigationRunner(investigation -> concluded, registry);
 

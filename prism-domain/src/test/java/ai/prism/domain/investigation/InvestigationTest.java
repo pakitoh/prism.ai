@@ -15,7 +15,7 @@ class InvestigationTest {
     }
 
     private static Signal sampleSignal() {
-        return new Signal(
+        return Signal.of(
                 SignalType.METRIC,
                 "rate(http_errors_total[5m])",
                 "0.42",
@@ -23,7 +23,7 @@ class InvestigationTest {
     }
 
     private static Finding sampleFinding() {
-        return new Finding(
+        return Finding.of(
                 "DB connection pool exhausted",
                 "error spike correlates with pool saturation at 10:00",
                 "raise the pool size and add a saturation alert",

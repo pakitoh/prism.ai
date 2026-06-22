@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import javax.sql.DataSource;
 
 /**
@@ -36,14 +37,15 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
     private static final String UPSERT = """
             INSERT INTO investigations (id, query, service, window_from, window_to, source, status,
                 finding_root_cause, finding_evidence, finding_recommended_action, finding_confidence,
-                failure_reason, signals)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+                finding_key_signal_index, failure_reason, signals)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
             ON CONFLICT (id) DO UPDATE SET
                 status = EXCLUDED.status,
                 finding_root_cause = EXCLUDED.finding_root_cause,
                 finding_evidence = EXCLUDED.finding_evidence,
                 finding_recommended_action = EXCLUDED.finding_recommended_action,
                 finding_confidence = EXCLUDED.finding_confidence,
+                finding_key_signal_index = EXCLUDED.finding_key_signal_index,
                 failure_reason = EXCLUDED.failure_reason,
                 signals = EXCLUDED.signals
             """;
@@ -51,14 +53,14 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
     private static final String SELECT_BY_ID = """
             SELECT id, query, service, window_from, window_to, source, status,
                    finding_root_cause, finding_evidence, finding_recommended_action, finding_confidence,
-                   failure_reason, signals
+                   finding_key_signal_index, failure_reason, signals
             FROM investigations WHERE id = ?
             """;
 
     private static final String SELECT_RECENT = """
             SELECT id, query, service, window_from, window_to, source, status,
                    finding_root_cause, finding_evidence, finding_recommended_action, finding_confidence,
-                   failure_reason, signals
+                   finding_key_signal_index, failure_reason, signals
             FROM investigations ORDER BY created_at DESC LIMIT ?
             """;
 
@@ -87,8 +89,9 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
             statement.setString(9, finding != null ? finding.evidence() : null);
             statement.setString(10, finding != null ? finding.recommendedAction() : null);
             statement.setString(11, finding != null ? finding.confidence().name() : null);
-            statement.setString(12, investigation.failureReason().orElse(null));
-            statement.setString(13, writeSignals(investigation.signals()));
+            statement.setObject(12, keySignalIndexOrNull(finding));
+            statement.setString(13, investigation.failureReason().orElse(null));
+            statement.setString(14, writeSignals(investigation.signals()));
             statement.executeUpdate();
         } catch (SQLException failure) {
             throw new PersistenceException("Failed to save investigation " + investigation.id(), failure);
@@ -153,11 +156,21 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
         if (rootCause == null) {
             return null;
         }
+        int keyIndex = row.getInt("finding_key_signal_index");
+        OptionalInt keySignalIndex = row.wasNull() ? OptionalInt.empty() : OptionalInt.of(keyIndex);
         return new Finding(
                 rootCause,
                 row.getString("finding_evidence"),
                 row.getString("finding_recommended_action"),
-                Confidence.valueOf(row.getString("finding_confidence")));
+                Confidence.valueOf(row.getString("finding_confidence")),
+                keySignalIndex);
+    }
+
+    private static Integer keySignalIndexOrNull(Finding finding) {
+        if (finding == null || finding.keySignalIndex().isEmpty()) {
+            return null;
+        }
+        return finding.keySignalIndex().getAsInt();
     }
 
     private static OffsetDateTime offsetOrNull(Instant instant) {
@@ -166,7 +179,13 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
 
     private String writeSignals(List<Signal> signals) {
         List<SignalRow> rows = signals.stream()
-                .map(s -> new SignalRow(s.type().name(), s.query(), s.content(), s.observedAt().toString()))
+                .map(s -> new SignalRow(
+                        s.type().name(),
+                        s.query(),
+                        s.content(),
+                        s.observedAt().toString(),
+                        s.window().map(w -> w.from().toString()).orElse(null),
+                        s.window().map(w -> w.to().toString()).orElse(null)))
                 .toList();
         try {
             return jsonMapper.writeValueAsString(rows);
@@ -180,14 +199,26 @@ public class PostgresInvestigationRepository implements InvestigationRepository 
             List<SignalRow> rows = jsonMapper.readValue(json, new TypeReference<List<SignalRow>>() {
             });
             return rows.stream()
-                    .map(r -> new Signal(SignalType.valueOf(r.type()), r.query(), r.content(), Instant.parse(r.observedAt())))
+                    .map(PostgresInvestigationRepository::toSignal)
                     .toList();
         } catch (Exception failure) {
             throw new PersistenceException("Failed to deserialize signals", failure);
         }
     }
 
+    private static Signal toSignal(SignalRow r) {
+        SignalType type = SignalType.valueOf(r.type());
+        Instant observedAt = Instant.parse(r.observedAt());
+        // Older rows (persisted before windows were stored) have no from/to → no window.
+        if (r.windowFrom() == null || r.windowTo() == null) {
+            return Signal.of(type, r.query(), r.content(), observedAt);
+        }
+        TimeWindow window = new TimeWindow(Instant.parse(r.windowFrom()), Instant.parse(r.windowTo()));
+        return Signal.over(type, r.query(), r.content(), observedAt, window);
+    }
+
     /** JSON shape for a persisted signal — keeps Jackson out of the domain. */
-    private record SignalRow(String type, String query, String content, String observedAt) {
+    private record SignalRow(String type, String query, String content, String observedAt,
+                             String windowFrom, String windowTo) {
     }
 }

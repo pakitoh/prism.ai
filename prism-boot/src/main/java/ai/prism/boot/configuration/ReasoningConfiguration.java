@@ -39,7 +39,7 @@ class ReasoningConfiguration {
     // errors (429, 5xx) before surfacing an exception to RetryingReasoningPort, which
     // then rotates to the next model. One "attempt" in RetryingReasoningPort may
     // therefore represent up to (1 + HTTP_MAX_RETRIES) HTTP calls.
-    private static final int HTTP_MAX_RETRIES = 2;
+    private static final int HTTP_MAX_RETRIES = 4;
 
     @Bean
     @ConfigurationPropertiesBinding
