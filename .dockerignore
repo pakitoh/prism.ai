@@ -1,0 +1,23 @@
+# Build output (rebuilt inside the image)
+**/target/
+
+# Local container data + decompiled-jar debris — not sources
+data/
+com/
+org/
+
+# VCS, IDE, env, logs
+.git/
+.idea/
+.vscode/
+.env
+.logs/
+*.iml
+
+# Docs / assets not needed to build the service
+*.md
+media/
+
+# The Dockerfile context itself
+Dockerfile
+.dockerignore
