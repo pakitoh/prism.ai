@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/java-25+-blue" alt="Java 21+">
+  <img src="https://img.shields.io/badge/java-25+-blue" alt="Java 25+">
   <img src="https://img.shields.io/badge/SpringBoot-v4.1-green" alt="SpringBoot 4.1">
   <img src="https://img.shields.io/badge/docker-compose-blue" alt="Docker Compose">
   <img src="https://img.shields.io/badge/license-GPLv3.0-green" alt="GPLv3 License">
@@ -37,6 +37,7 @@ An AI-powered observability investigation assistant. Feed it a metric anomaly, a
 
 - **On-demand investigation** — ask "what's wrong with checkout-service in the last 30 minutes?" and get a structured root-cause analysis backed by live queries
 - **Signal correlation** — autonomously chains metric → log → trace queries rather than forcing you to pivot between tools manually
+- **Clickable evidence** — every gathered signal carries a Grafana Explore deep link, and the finding nominates a headline link to the key signal, so you can jump straight from the conclusion to the data
 - **Growing memory** — past investigations are embedded in pgvector; recurring failure patterns surface their own history
 - **Alert-driven (Phase 3)** — Alertmanager fires a Kafka event; prism.ai picks it up, investigates, and delivers a report
 - **Remote MCP server (Phase 4)** — runs in the cloud with access to the company stack; developers connect Claude Code or Claude Desktop from their laptops and investigate in natural language
@@ -62,7 +63,8 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
          ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
          ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
          ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
-         ├─ SearchTraces(service, win)   → Tempo HTTP API ───────┤ record Signal
+         ├─ SearchTraces(TraceQL, win)   → Tempo HTTP API ───────┤
+         ├─ List{Log,Metric,Trace}…      → schema discovery ─────┤ record Signal
          ├─ SearchPastInvestigations(q)  → pgvector memory ──────┘   then loop
          │                               │
          └─ Conclusion ─────────────────────────────────────────▶ done
@@ -72,6 +74,8 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
 ```
 
 A typical investigation: detect an error-rate spike → pull correlated logs → find an exemplar trace → identify the failing span and dependency. No manual pivoting between dashboards. A step limit guarantees the loop always terminates.
+
+To keep the model from guessing datasource conventions, each investigation is **seeded** up front with the live schema — Loki log labels, Prometheus metric names, Tempo trace tags — so it queries `service_name` rather than a hallucinated `service`. The model can also discover labels/values on demand via the `list_*` tools.
 
 ### Asynchronous execution
 
@@ -104,7 +108,7 @@ Every completed investigation is embedded and stored in pgvector. When a similar
 
 ### Self-observability
 
-prism.ai instruments itself with OpenTelemetry and exports its own metrics, traces and logs (OTLP) to the very stack it investigates — Tempo, Prometheus and Loki. A single investigation produces a nested trace: the HTTP request → the investigation → each reasoning step and tool call. Per-investigation metrics (outcome, duration, step kinds, telemetry-query backends) come from `Observed*` decorators wrapping the ports, so the domain stays instrumentation-free.
+prism.ai instruments itself with OpenTelemetry and exports its own metrics, traces and logs (OTLP) to the very stack it investigates — Tempo, Prometheus and Loki. Because the loop runs asynchronously off the request thread, each investigation is its **own** trace — a `prism.investigation` root span over every reasoning step and tool call — correlated to the originating request trace by a shared `investigation.id` (on both) and a `request.trace_id` back-pointer. Per-investigation metrics (outcome, duration, step kinds, telemetry-query backends) come from `Observed*` decorators wrapping the ports, so the domain stays instrumentation-free. The running build is identifiable too: the git commit is logged at startup and exposed at `/actuator/info`.
 
 Agent-quality evaluation via [Langfuse](https://langfuse.com) — scoring each investigation's reasoning — is planned for a later phase.
 
@@ -174,7 +178,7 @@ See [PLAN.md](PLAN.md) for implementation phases.
 Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, Kafka, or the model — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
 
 ```
-  REST / MCP server (SSE) / Kafka
+  REST / MCP server (Streamable HTTP) / Kafka
                │
         [Inbound Adapters]
                │

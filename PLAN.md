@@ -19,7 +19,7 @@ Multi-module layout: `prism-domain`, `prism-adapters-in`, `prism-adapters-out`, 
 ```
 Investigation          — aggregate root; owns the full investigation lifecycle
 InvestigationRequest   — value object; the starting point (alert, free-text query, metric spike)
-Signal                 — value object; a single observation (type: METRIC | LOG | TRACE | MEMORY)
+Signal                 — value object; a single observation (type: METRIC | LOG | TRACE | MEMORY | SCHEMA)
 Finding                — value object; the model's interpretation of one or more signals
 InvestigationStatus    — PENDING | IN_PROGRESS | CONCLUDED | FAILED
 ```
@@ -27,25 +27,27 @@ InvestigationStatus    — PENDING | IN_PROGRESS | CONCLUDED | FAILED
 ### 1.3 Outbound port interfaces
 
 ```java
-MetricsPort       — queryRange(PromQL, window) → Signal
-LogsPort          — search(LogQL, window) → Signal
-TracingPort       — getTrace(traceId), searchTraces(service, window) → Signal
+MetricsPort       — queryRange(PromQL, window) → Signal; listMetricNames() → Signal
+LogsPort          — search(LogQL, window) → Signal; listLabelNames(), listLabelValues(label) → Signal
+TracingPort       — getTrace(traceId), searchTraces(TraceQL, window) → Signal; listTagNames(), listTagValues(tag) → Signal
 ReasoningPort     — nextStep(InvestigationContext) → ReasoningStep (a tool request, or a conclusion)
 InvestigationRepository — persist / load Investigation aggregates
 ```
 
 The investigation loop lives in `InvestigationLoop` (application layer), not in
-any adapter. It drives the steps, dispatches tool requests to the telemetry
-ports, records signals, and stops on a conclusion or the `maxSteps` bound. The
-`ReasoningStep` sealed type (`QueryMetrics | SearchLogs | GetTrace | SearchTraces |
-SearchPastInvestigations | Conclusion`, in `ai.prism.domain.reasoning`) is the
-model-agnostic vocabulary crossing the `ReasoningPort` boundary.
+any adapter. It seeds the telemetry schema up front, then drives the steps,
+dispatches tool requests to the telemetry ports, records signals, and stops on a
+conclusion or the `maxSteps` bound. The `ReasoningStep` sealed type (`QueryMetrics |
+SearchLogs | GetTrace | SearchTraces | ListLogLabels | ListLogLabelValues |
+ListMetricNames | ListTraceTags | ListTraceTagValues | SearchPastInvestigations |
+Conclusion`, in `ai.prism.domain.reasoning`) is the model-agnostic vocabulary
+crossing the `ReasoningPort` boundary.
 
 ### 1.4 Adapters
 
-- `PrometheusAdapter` implements `MetricsPort` via Prometheus HTTP API (`/api/v1/query_range`)
-- `LokiAdapter` implements `LogsPort` via Loki HTTP API (`/loki/api/v1/query_range`)
-- `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`)
+- `PrometheusAdapter` implements `MetricsPort` via Prometheus HTTP API (`/api/v1/query_range`, metric-name discovery `/api/v1/label/__name__/values`)
+- `LokiAdapter` implements `LogsPort` via Loki HTTP API (`/loki/api/v1/query_range`, label discovery `/labels` & `/label/{n}/values`); reduces query responses to their log lines, dropping Loki's `stats` block
+- `TempoAdapter` implements `TracingPort` via Tempo HTTP API (`/api/traces/{traceId}`, TraceQL search `/api/search?q=`, v2 tag discovery `/api/v2/search/tags`)
 - `SpringAiReasoningAdapter` implements `ReasoningPort` via Spring AI: the framework's agentic tool-execution loop is not used, so the model's single tool choice is returned to the loop rather than executed by the framework. A pure `ReasoningStepMapper` translates the tool call into a `ReasoningStep`. Provider and model id are configuration-driven; the loop stays in `InvestigationLoop`.
 - `PostgresInvestigationRepository` persists Investigation aggregates
 - **Reasoning resilience** (added later): `RetryingReasoningPort` wraps the per-model `SpringAiReasoningAdapter`s and retries each step up to `prism.reasoning.max-attempts`, rotating models on error — including a cross-provider Groq (OpenAI-compatible) fallback.

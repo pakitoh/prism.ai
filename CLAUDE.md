@@ -13,7 +13,7 @@ See [README.md](README.md) for stack overview and [PLAN.md](PLAN.md) for impleme
 **Hexagonal architecture. No exceptions.**
 
 ```
-prism-domain        — pure Java 21; zero framework dependencies
+prism-domain        — pure Java 25; zero framework dependencies
 prism-adapters-in   — REST, MCP server, Kafka consumer; depends on domain
 prism-adapters-out  — model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector; depends on domain
 prism-boot          — Spring Boot wiring; depends on all adapter modules
@@ -33,8 +33,9 @@ prism-boot          — Spring Boot wiring; depends on all adapter modules
 - **Java 25** — use records for value objects, sealed interfaces for domain enums with behaviour, pattern matching where it reduces noise
 - **Maven multi-module** — BOM-managed dependencies; no version numbers scattered across child POMs
 - **Spring Boot** (boot module only) — no `@Component`, `@Service`, or `@Repository` in `prism-domain`
-- **Model access via Spring AI; provider- and config-driven** — no provider or model name appears in the domain or port names. The reasoning port is `ReasoningPort`, implemented by `SpringAiReasoningAdapter`. It runs Spring AI with **internal tool execution disabled** so the framework does not run the agentic loop — it only returns the model's single tool choice, which the application loop dispatches. Because Spring AI is a unified abstraction, both the model id and the provider are configuration changes (the model-id list in `prism.reasoning.models`, or a different starter), not code changes. Default provider is Google Gemini (API-key auth). Multiple models are composed for resilience: `RetryingReasoningPort` retries each reasoning step up to `prism.reasoning.max-attempts`, rotating (round-robin) to a different `SpringAiReasoningAdapter` — each targeting one model id, including a cross-provider Groq fallback — on every error.
-- **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly (`/api/v1/query_range`, `/loki/api/v1/query_range`, `/api/traces/{id}`); do not introduce grafana-mcp as a runtime dependency
+- **Model access via Spring AI; provider- and config-driven** — no provider or model name appears in the domain or port names. The reasoning port is `ReasoningPort`, implemented by `SpringAiReasoningAdapter`. It runs Spring AI with **internal tool execution disabled** so the framework does not run the agentic loop — it only returns the model's single tool choice, which the application loop dispatches. Because Spring AI is a unified abstraction, both the model id and the provider are configuration changes (the model-id list in `prism.reasoning.models`, or a different starter), not code changes. Default provider is Google Gemini (API-key auth). Multiple models are composed for resilience: `RetryingReasoningPort` retries each reasoning step up to `prism.reasoning.max-attempts`, rotating (round-robin) to a different `SpringAiReasoningAdapter` — each targeting one model id, including a cross-provider Groq fallback — on every error, waiting between attempts with exponential backoff + jitter (`prism.reasoning.retry-backoff` … `retry-backoff-max`) so an overloaded provider can recover instead of being hammered.
+- **Direct HTTP adapters** — `PrometheusAdapter`, `LokiAdapter`, and `TempoAdapter` call the datasource HTTP APIs directly: range queries (`/api/v1/query_range`, `/loki/api/v1/query_range`), a trace by id (`/api/traces/{id}`) and **TraceQL** search (`/api/search?q=`), plus the schema-discovery endpoints below. `LokiAdapter` reduces a query response to just its log lines (grouped by stream labels), dropping Loki's large `stats` block, before it becomes a `Signal`. Do not introduce grafana-mcp as a runtime dependency.
+- **Schema discovery & seeding** — to stop the model guessing label/metric/tag names (e.g. `service` vs OTel-native `service_name`), the reasoning vocabulary includes discovery steps (`ListLogLabels`, `ListLogLabelValues`, `ListMetricNames`, `ListTraceTags`, `ListTraceTagValues`), exposed as `list_*` tools and backed by the datasource discovery endpoints (Loki `/labels` & `/label/{n}/values`, Prometheus `/label/__name__/values`, Tempo v2 `/api/v2/search/tags` & `/tag/{t}/values`). Their results are `SignalType.SCHEMA` signals (no dashboard link). `InvestigationLoop` also **seeds** the schema (log labels, metric names, trace tags) as the first signals of every investigation, best-effort, so the model sees the real names before its first query; `SCHEMA` signals are kept fully visible in the reasoning prompt (never truncated or omitted) so they aren't wastefully re-discovered.
 - **Dashboard deep links** — `DashboardLinkPort` (in `prism-domain`) turns a `Signal` into a clickable Grafana Explore URL, surfaced on the REST/MCP investigation views (`signals[].link` plus a `primaryLink` headline the model nominates via `Finding.keySignalIndex`). The sole implementation, `GrafanaDashboardLinkAdapter` (`adapters.out.link`), is **pure URL construction from data the `Signal` already carries — no network call**, which is also why this does not need (and must not pull in) grafana-mcp. Configured by `prism.grafana.url` + the per-source datasource UIDs (`prometheus-uid`/`loki-uid`/`tempo-uid`); a blank UID disables links for that source. Best-effort: it never throws and returns no link rather than failing.
 - **MCP Java SDK** — via the Spring AI MCP server (WebMVC) starter, `InvestigationMcpTools` (inbound) exposes prism.ai's investigation tools (`investigate`, `get_investigation`, `list_recent_investigations`) over the **Streamable HTTP** transport at `/mcp` (MCP revision 2025-06-18; the deprecated HTTP+SSE transport is not used); this makes prism.ai a remote MCP server that Claude Code and Claude Desktop can connect to
 - **pgvector via JDBC** — no ORM for vector operations; write plain SQL for similarity search queries
@@ -74,11 +75,15 @@ The split of responsibility:
   the only part that knows a provider's tool-use protocol; it is implemented by an
   adapter and returns a `ReasoningStep`.
 - **`InvestigationLoop`** (implements the `InvestigationRunner` SPI) owns the loop.
-  It repeatedly asks for the next step, dispatches tool requests to the telemetry
-  ports (`MetricsPort`, `LogsPort`, `TracingPort`) or the memory port (`MemoryPort`),
-  records each `Signal` on the aggregate, and ends when a `Conclusion` arrives or
-  the `maxSteps` bound is hit. A failed telemetry tool call is best-effort — recorded
-  as an error `Signal` so the model can retry — while a reasoning failure fails the run.
+  Before the first step it best-effort **seeds** the telemetry schema (log labels,
+  metric names, trace tags) as the opening signals. It then repeatedly asks for the
+  next step, dispatches tool requests to the telemetry ports (`MetricsPort`, `LogsPort`,
+  `TracingPort`) or the memory port (`MemoryPort`), records each `Signal` on the
+  aggregate, and ends when a `Conclusion` arrives or the `maxSteps` bound is hit.
+  A failed telemetry tool call is best-effort: a **rejected query** (HTTP 4xx, surfaced
+  as `TelemetryException`) is recorded as an error `Signal` telling the model to fix the
+  query, while an **unreachable datasource** is recorded as an infrastructure failure the
+  model must not mistake for evidence or an outage. A reasoning failure fails the run.
 
 **Async + CQRS at the boundary.** Two inbound ports split the command and query
 sides: `InvestigationCommandsUseCase` (`submit` runs the loop on a virtual-thread
@@ -90,9 +95,11 @@ decorators (`ObservedInvestigationRunner`, `RememberingInvestigationRunner`) wra
 
 ```
 ReasoningStep (sealed):
-  QueryMetrics | SearchLogs | GetTrace | SearchTraces  → dispatched to a telemetry port
-  SearchPastInvestigations                             → dispatched to the knowledge base
-  Conclusion(Finding)                                  → ends the loop
+  QueryMetrics | SearchLogs | GetTrace | SearchTraces(TraceQL)   → telemetry query
+  ListLogLabels | ListLogLabelValues | ListMetricNames
+    | ListTraceTags | ListTraceTagValues                         → schema discovery (SCHEMA signal)
+  SearchPastInvestigations                                       → knowledge base (MEMORY signal)
+  Conclusion(Finding)                                            → ends the loop
 ```
 
 The adapter never sees the loop; the application never sees tool-use JSON or which

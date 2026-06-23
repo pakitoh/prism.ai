@@ -11,9 +11,10 @@ import java.time.Clock;
 import java.util.Objects;
 
 /**
- * {@link TracingPort} backed by the Tempo HTTP API: `/api/traces/{id}` for a
- * single trace and `/api/search` for finding traces of a service. Returns the
- * raw JSON response as a {@link Signal}.
+ * {@link TracingPort} backed by the Tempo HTTP API: `/api/traces/{id}` for a single
+ * trace, `/api/search?q=` for a TraceQL search, and the v2 tag-discovery endpoints
+ * (`/api/v2/search/tags`, `/api/v2/search/tag/{t}/values`). Returns the raw JSON
+ * response as a {@link Signal} for the model to interpret.
  */
 public class TempoAdapter implements TracingPort {
 

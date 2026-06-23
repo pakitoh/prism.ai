@@ -11,8 +11,9 @@ import java.time.Clock;
 import java.util.Objects;
 
 /**
- * {@link MetricsPort} backed by the Prometheus HTTP API (`/api/v1/query_range`).
- * Returns the raw JSON response as a {@link Signal} for the model to interpret.
+ * {@link MetricsPort} backed by the Prometheus HTTP API (`/api/v1/query_range`, plus
+ * metric-name discovery via `/api/v1/label/__name__/values`). Returns the raw JSON
+ * response as a {@link Signal} for the model to interpret.
  */
 public class PrometheusAdapter implements MetricsPort {
 

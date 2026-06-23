@@ -53,6 +53,11 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
             them first with the list_* tools, then query. An empty result usually means the name
             was wrong, not that the service is absent: verify the name before inferring anything is
             down, and never conclude an outage from empty results alone.
+
+            The telemetry schema and every result you have gathered are listed below. Never repeat
+            a query or discovery you have already run — reuse what is already there. Conclude as
+            soon as the evidence supports a root cause: once a log or trace shows an error that
+            explains the symptom, conclude rather than gathering more.
             """;
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiReasoningAdapter.class);
@@ -143,14 +148,17 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         } else {
             // Every signal is listed by number and query so the model recalls what it already
             // tried (and stops repeating queries); only the most recent few carry full bodies,
-            // keeping the prompt from ballooning as evidence accumulates.
+            // keeping the prompt from ballooning as evidence accumulates. SCHEMA signals are the
+            // exception — they are stable reference data (the seeded label/metric/tag names) the
+            // model needs throughout, so they stay fully visible no matter how old, otherwise it
+            // loses sight of the names and wastefully re-discovers them.
             int firstFull = Math.max(0, signals.size() - RECENT_FULL);
             out.append("\nEvidence gathered so far (referenceable by the leading number):\n");
             for (int i = 0; i < signals.size(); i++) {
                 Signal signal = signals.get(i);
                 out.append("- [").append(i + 1).append("] [").append(signal.type()).append("] ")
                         .append(signal.query());
-                if (i >= firstFull) {
+                if (i >= firstFull || signal.type() == SignalType.SCHEMA) {
                     out.append(" =>\n").append(render(signal)).append('\n');
                 } else {
                     out.append(" => [earlier result omitted]\n");
