@@ -7,7 +7,8 @@ com/
 org/
 
 # VCS, IDE, env, logs
-.git/
+# .git is intentionally NOT excluded: the git-commit-id plugin reads it during the
+# image build to stamp the commit into git.properties (logged at startup).
 .idea/
 .vscode/
 .env

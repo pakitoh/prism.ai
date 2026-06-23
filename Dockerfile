@@ -20,6 +20,9 @@ COPY prism-domain/src prism-domain/src
 COPY prism-adapters-out/src prism-adapters-out/src
 COPY prism-adapters-in/src prism-adapters-in/src
 COPY prism-boot/src prism-boot/src
+# .git lets the git-commit-id plugin stamp the commit into git.properties. Copied last so it
+# only invalidates the build (not the dependency) layer; the plugin uses JGit, no git binary.
+COPY .git .git
 RUN mvn -B -q -DskipTests clean package
 
 # ---- Runtime stage: slim JRE running the repackaged jar ----
