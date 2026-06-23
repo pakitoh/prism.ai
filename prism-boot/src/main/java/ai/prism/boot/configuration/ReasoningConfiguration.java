@@ -67,7 +67,8 @@ class ReasoningConfiguration {
                                 config.id())))
                 .collect(Collectors.toUnmodifiableList());
         return new ObservedReasoningPort(
-                new RetryingReasoningPort(delegates, properties.maxAttempts()),
+                new RetryingReasoningPort(delegates, properties.maxAttempts(),
+                        properties.retryBackoffOrDefault(), properties.retryBackoffMaxOrDefault(), Thread::sleep),
                 observationRegistry);
     }
 

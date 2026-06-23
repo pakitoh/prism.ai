@@ -10,5 +10,7 @@ package ai.prism.domain.reasoning;
  * is the adapter's concern, not the application's.
  */
 public sealed interface ReasoningStep
-        permits QueryMetrics, SearchLogs, GetTrace, SearchTraces, SearchPastInvestigations, Conclusion {
+        permits QueryMetrics, SearchLogs, GetTrace, SearchTraces,
+                ListLogLabels, ListLogLabelValues, ListMetricNames, ListTraceTags, ListTraceTagValues,
+                SearchPastInvestigations, Conclusion {
 }

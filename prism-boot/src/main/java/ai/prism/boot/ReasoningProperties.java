@@ -1,5 +1,6 @@
 package ai.prism.boot;
 
+import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -7,13 +8,32 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Reasoning configuration: an ordered list of models tried in sequence.
  *
  * <p>Each reasoning step tries the first model, rotates to the next on error, and retries
- * up to {@code maxAttempts} across the pool. Position determines priority.
+ * up to {@code maxAttempts} across the pool. Position determines priority. Between attempts
+ * it waits with exponential backoff + jitter, growing from {@code retryBackoff} up to
+ * {@code retryBackoffMax}, so a provider rate-limit/overload spike can clear instead of being
+ * hammered.
  *
- * @param maxAttempts retries per reasoning step; defaults to the total model count when unset
- * @param models      ordered model configurations; first entry has highest priority
+ * @param maxAttempts     retries per reasoning step; defaults to the total model count when unset
+ * @param retryBackoff    initial wait before the first retry; defaults to {@link #DEFAULT_RETRY_BACKOFF}
+ * @param retryBackoffMax cap on the backoff wait; defaults to {@link #DEFAULT_RETRY_BACKOFF_MAX}
+ * @param models          ordered model configurations; first entry has highest priority
  */
 @ConfigurationProperties(prefix = "prism.reasoning")
-public record ReasoningProperties(Integer maxAttempts, List<ModelConfig> models) {
+public record ReasoningProperties(Integer maxAttempts, Duration retryBackoff, Duration retryBackoffMax,
+                                  List<ModelConfig> models) {
+
+    public static final Duration DEFAULT_RETRY_BACKOFF = Duration.ofMillis(500);
+    public static final Duration DEFAULT_RETRY_BACKOFF_MAX = Duration.ofSeconds(8);
+
+    /** The configured initial backoff, or {@link #DEFAULT_RETRY_BACKOFF} when unset. */
+    public Duration retryBackoffOrDefault() {
+        return retryBackoff != null ? retryBackoff : DEFAULT_RETRY_BACKOFF;
+    }
+
+    /** The configured max backoff, or {@link #DEFAULT_RETRY_BACKOFF_MAX} when unset. */
+    public Duration retryBackoffMaxOrDefault() {
+        return retryBackoffMax != null ? retryBackoffMax : DEFAULT_RETRY_BACKOFF_MAX;
+    }
 
     /**
      * One model in the pool.

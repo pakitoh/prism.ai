@@ -33,17 +33,36 @@ class TempoAdapterTest {
     }
 
     @Test
-    void searchesTracesByServiceOverTheWindow() {
-        Signal signal = adapter.searchTraces("checkout-service", WINDOW);
+    void searchesTracesWithATraceQlQueryOverTheWindow() {
+        Signal signal = adapter.searchTraces("{ resource.service.name = \"checkout\" }", WINDOW);
 
         assertThat(http.lastUri.toString())
-                .startsWith("http://tempo:3200/api/search?tags=")
+                .startsWith("http://tempo:3200/api/search?q=")
                 .contains("start=" + WINDOW.from().getEpochSecond())
                 .contains("end=" + WINDOW.to().getEpochSecond())
                 .contains("limit=20");
-        // the service tag must be percent-encoded (service.name=checkout-service)
-        assertThat(http.lastUri.toString()).contains("service.name%3Dcheckout-service");
+        // the TraceQL query is percent-encoded (braces, quotes and spaces escaped)
+        assertThat(http.lastUri.toString()).doesNotContain("{ resource");
         assertThat(signal.type()).isEqualTo(SignalType.TRACE);
-        assertThat(signal.query()).isEqualTo("service.name=checkout-service");
+        assertThat(signal.query()).isEqualTo("{ resource.service.name = \"checkout\" }");
+    }
+
+    @Test
+    void listsTraceTagsViaTheV2Endpoint() {
+        Signal signal = adapter.listTagNames();
+
+        assertThat(http.lastUri.toString()).isEqualTo("http://tempo:3200/api/v2/search/tags");
+        assertThat(signal.type()).isEqualTo(SignalType.SCHEMA);
+        assertThat(signal.query()).isEqualTo("trace tags");
+    }
+
+    @Test
+    void listsTraceTagValuesViaTheV2Endpoint() {
+        Signal signal = adapter.listTagValues("resource.service.name");
+
+        assertThat(http.lastUri.toString())
+                .isEqualTo("http://tempo:3200/api/v2/search/tag/resource.service.name/values");
+        assertThat(signal.type()).isEqualTo(SignalType.SCHEMA);
+        assertThat(signal.query()).isEqualTo("trace tag values: resource.service.name");
     }
 }

@@ -49,6 +49,16 @@ class PrometheusAdapterTest {
     }
 
     @Test
+    void listsMetricNames() {
+        Signal signal = adapter.listMetricNames();
+
+        assertThat(http.lastUri.toString())
+                .isEqualTo("http://prometheus:9090/api/v1/label/__name__/values");
+        assertThat(signal.type()).isEqualTo(SignalType.SCHEMA);
+        assertThat(signal.query()).isEqualTo("metric names");
+    }
+
+    @Test
     void propagatesTransportFailures() {
         PrometheusAdapter failing = new PrometheusAdapter(
                 RecordingHttpExecutor.failing("connection refused"),

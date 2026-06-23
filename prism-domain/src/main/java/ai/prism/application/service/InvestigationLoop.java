@@ -10,6 +10,11 @@ import ai.prism.application.port.out.TelemetryException;
 import ai.prism.application.port.out.TracingPort;
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
+import ai.prism.domain.reasoning.ListLogLabels;
+import ai.prism.domain.reasoning.ListLogLabelValues;
+import ai.prism.domain.reasoning.ListMetricNames;
+import ai.prism.domain.reasoning.ListTraceTags;
+import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.ReasoningStep;
 import ai.prism.domain.reasoning.SearchLogs;
@@ -87,9 +92,10 @@ public class InvestigationLoop implements InvestigationRunner {
     }
 
     private void investigate(Investigation investigation) {
+        seedSchema(investigation);
         for (int step = 0; step < maxSteps; step++) {
-            InvestigationContext context =
-                    new InvestigationContext(investigation.request(), investigation.signals());
+            InvestigationContext context = new InvestigationContext(
+                    investigation.request(), investigation.signals(), step + 1, maxSteps);
             ReasoningStep next = reasoningPort.nextStep(context);
             switch (next) {
                 case QueryMetrics m -> dispatch(investigation, SignalType.METRIC, m.promQl(),
@@ -98,8 +104,18 @@ public class InvestigationLoop implements InvestigationRunner {
                         () -> logsPort.search(l.logQl(), l.window()));
                 case GetTrace t -> dispatch(investigation, SignalType.TRACE, t.traceId(),
                         () -> tracingPort.getTrace(t.traceId()));
-                case SearchTraces s -> dispatch(investigation, SignalType.TRACE, s.service(),
-                        () -> tracingPort.searchTraces(s.service(), s.window()));
+                case SearchTraces s -> dispatch(investigation, SignalType.TRACE, s.traceQl(),
+                        () -> tracingPort.searchTraces(s.traceQl(), s.window()));
+                case ListLogLabels l -> dispatch(investigation, SignalType.SCHEMA, "log labels",
+                        logsPort::listLabelNames);
+                case ListLogLabelValues v -> dispatch(investigation, SignalType.SCHEMA,
+                        "log label values: " + v.label(), () -> logsPort.listLabelValues(v.label()));
+                case ListMetricNames m -> dispatch(investigation, SignalType.SCHEMA, "metric names",
+                        metricsPort::listMetricNames);
+                case ListTraceTags t -> dispatch(investigation, SignalType.SCHEMA, "trace tags",
+                        tracingPort::listTagNames);
+                case ListTraceTagValues v -> dispatch(investigation, SignalType.SCHEMA,
+                        "trace tag values: " + v.tag(), () -> tracingPort.listTagValues(v.tag()));
                 case SearchPastInvestigations p -> investigation.recordSignal(knowledgeBase.findSimilar(p.query()));
                 case Conclusion c -> {
                     investigation.conclude(c.finding());
@@ -108,6 +124,30 @@ public class InvestigationLoop implements InvestigationRunner {
             }
         }
         investigation.fail("reached the step limit of " + maxSteps + " without a conclusion");
+    }
+
+    /**
+     * Seeds the investigation with the telemetry schema before any reasoning, so the model's
+     * first prompt shows the real label/metric/tag names and cannot guess wrong ones (e.g.
+     * {@code service} instead of OTel-native {@code service_name}). Best-effort and consumes no
+     * reasoning step; an unreachable datasource is simply skipped — the model would discover that
+     * when it queries.
+     */
+    private void seedSchema(Investigation investigation) {
+        recordSchema(investigation, logsPort::listLabelNames);
+        recordSchema(investigation, metricsPort::listMetricNames);
+        recordSchema(investigation, tracingPort::listTagNames);
+    }
+
+    private void recordSchema(Investigation investigation, Supplier<Signal> call) {
+        try {
+            Signal signal = call.get();
+            if (signal != null) {
+                investigation.recordSignal(signal);
+            }
+        } catch (RuntimeException bestEffort) {
+            // Seeding is best-effort: skip silently rather than record a noisy error signal.
+        }
     }
 
     /**
@@ -152,6 +192,7 @@ public class InvestigationLoop implements InvestigationRunner {
             case LOG -> "logs (Loki)";
             case TRACE -> "tracing (Tempo)";
             case MEMORY -> "memory";
+            case SCHEMA -> "schema discovery";
         };
     }
 

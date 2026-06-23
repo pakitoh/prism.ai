@@ -71,6 +71,13 @@ class GrafanaDashboardLinkAdapterTest {
     }
 
     @Test
+    void returnsNoLinkForASchemaSignal() {
+        Signal signal = Signal.of(SignalType.SCHEMA, "log labels", "[\"service_name\"]", TO);
+
+        assertThat(adapter.dashboardLink(signal)).isEmpty();
+    }
+
+    @Test
     void returnsNoLinkWhenTheDatasourceUidIsBlank() {
         GrafanaDashboardLinkAdapter noTempo = new GrafanaDashboardLinkAdapter(
                 "http://grafana.local",

@@ -2,6 +2,11 @@ package ai.prism.adapters.out.reasoning;
 
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
+import ai.prism.domain.reasoning.ListLogLabels;
+import ai.prism.domain.reasoning.ListLogLabelValues;
+import ai.prism.domain.reasoning.ListMetricNames;
+import ai.prism.domain.reasoning.ListTraceTags;
+import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.ReasoningStep;
 import ai.prism.domain.reasoning.SearchLogs;
@@ -34,7 +39,14 @@ final class ReasoningStepMapper {
             case ReasoningToolNames.GET_TRACE ->
                     new GetTrace(string(arguments, "traceId"));
             case ReasoningToolNames.SEARCH_TRACES ->
-                    new SearchTraces(string(arguments, "service"), window(arguments));
+                    new SearchTraces(string(arguments, "traceQl"), window(arguments));
+            case ReasoningToolNames.LIST_LOG_LABELS -> new ListLogLabels();
+            case ReasoningToolNames.LIST_LOG_LABEL_VALUES ->
+                    new ListLogLabelValues(string(arguments, "label"));
+            case ReasoningToolNames.LIST_METRIC_NAMES -> new ListMetricNames();
+            case ReasoningToolNames.LIST_TRACE_TAGS -> new ListTraceTags();
+            case ReasoningToolNames.LIST_TRACE_TAG_VALUES ->
+                    new ListTraceTagValues(string(arguments, "tag"));
             case ReasoningToolNames.SEARCH_PAST_INVESTIGATIONS ->
                     new SearchPastInvestigations(string(arguments, "query"));
             case ReasoningToolNames.CONCLUDE -> new Conclusion(new Finding(

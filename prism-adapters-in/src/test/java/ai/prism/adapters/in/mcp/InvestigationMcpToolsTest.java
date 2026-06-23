@@ -38,7 +38,7 @@ class InvestigationMcpToolsTest {
     private DashboardLinkPort links;
 
     private InvestigationMcpTools tools() {
-        return new InvestigationMcpTools(commands, queries, links);
+        return new InvestigationMcpTools(commands, queries, links, io.micrometer.observation.ObservationRegistry.NOOP);
     }
 
     @Test

@@ -122,6 +122,10 @@ class InvestigationLoopTest {
         verify(reasoningPort, times(2)).nextStep(contexts.capture());
         assertThat(contexts.getAllValues().get(0).priorSignals()).isEmpty();
         assertThat(contexts.getAllValues().get(1).priorSignals()).containsExactly(metricSignal());
+        // each step carries an increasing 1-based budget position against the configured max
+        assertThat(contexts.getAllValues().get(0).step()).isEqualTo(1);
+        assertThat(contexts.getAllValues().get(1).step()).isEqualTo(2);
+        assertThat(contexts.getAllValues()).allSatisfy(c -> assertThat(c.maxSteps()).isEqualTo(MAX_STEPS));
     }
 
     @Test
@@ -220,6 +224,60 @@ class InvestigationLoopTest {
         assertThat(error.content())
                 .contains("parse error")
                 .contains("correct it and try again");
+    }
+
+    @Test
+    void dispatchesSchemaDiscoveryToTheLogsPortAndRecordsASchemaSignal() {
+        // listLabelValues is not part of the up-front seeding, so this isolates the
+        // reasoning-step dispatch from the seeded label/metric/tag signals.
+        Signal values = Signal.of(SignalType.SCHEMA, "log label values: service_name",
+                "analysis-worker, ingestion-service", WINDOW.from());
+        when(reasoningPort.nextStep(any())).thenReturn(
+                new ai.prism.domain.reasoning.ListLogLabelValues("service_name"),
+                new Conclusion(finding()));
+        when(logsPort.listLabelValues("service_name")).thenReturn(values);
+
+        Investigation investigation = service.run(Investigation.open(request()));
+
+        assertThat(investigation.signals()).containsExactly(values);
+        verify(logsPort).listLabelValues("service_name");
+    }
+
+    @Test
+    void seedsTheTelemetrySchemaBeforeTheFirstReasoningStep() {
+        Signal logLabels = Signal.of(SignalType.SCHEMA, "log labels", "service_name, level", WINDOW.from());
+        Signal metricNames = Signal.of(SignalType.SCHEMA, "metric names", "up, http_requests_total", WINDOW.from());
+        Signal traceTags = Signal.of(SignalType.SCHEMA, "trace tags", "resource.service.name", WINDOW.from());
+        when(logsPort.listLabelNames()).thenReturn(logLabels);
+        when(metricsPort.listMetricNames()).thenReturn(metricNames);
+        when(tracingPort.listTagNames()).thenReturn(traceTags);
+        when(reasoningPort.nextStep(any())).thenReturn(new Conclusion(finding()));
+
+        Investigation investigation = service.run(Investigation.open(request()));
+
+        // The schema is recorded up front, ahead of any reasoning evidence.
+        assertThat(investigation.signals()).containsExactly(logLabels, metricNames, traceTags);
+        // ...and is already visible to the very first reasoning decision.
+        ArgumentCaptor<InvestigationContext> context = ArgumentCaptor.forClass(InvestigationContext.class);
+        verify(reasoningPort).nextStep(context.capture());
+        assertThat(context.getValue().priorSignals()).containsExactly(logLabels, metricNames, traceTags);
+    }
+
+    @Test
+    void seedingIsBestEffortAndSwallowsFailures() {
+        when(logsPort.listLabelNames()).thenThrow(new RuntimeException("loki unreachable"));
+        when(metricsPort.listMetricNames()).thenReturn(
+                Signal.of(SignalType.SCHEMA, "metric names", "up", WINDOW.from()));
+        when(tracingPort.listTagNames()).thenReturn(
+                Signal.of(SignalType.SCHEMA, "trace tags", "resource.service.name", WINDOW.from()));
+        when(reasoningPort.nextStep(any())).thenReturn(new Conclusion(finding()));
+
+        Investigation investigation = service.run(Investigation.open(request()));
+
+        assertThat(investigation.status()).isEqualTo(InvestigationStatus.CONCLUDED);
+        // The failed log-labels seed is skipped silently (no error signal), the others recorded.
+        assertThat(investigation.signals()).hasSize(2);
+        assertThat(investigation.signals()).noneMatch(s -> s.content().contains("loki unreachable"));
     }
 
     @Test

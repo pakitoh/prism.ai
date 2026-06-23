@@ -7,5 +7,7 @@ public enum SignalType {
     METRIC,
     LOG,
     TRACE,
-    MEMORY
+    MEMORY,
+    /** A schema-discovery result: available label/metric/tag names or values, not a telemetry observation. */
+    SCHEMA
 }

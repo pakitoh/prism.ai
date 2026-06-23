@@ -5,6 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
+import ai.prism.domain.reasoning.ListLogLabels;
+import ai.prism.domain.reasoning.ListLogLabelValues;
+import ai.prism.domain.reasoning.ListMetricNames;
+import ai.prism.domain.reasoning.ListTraceTags;
+import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.SearchLogs;
 import ai.prism.domain.reasoning.SearchPastInvestigations;
@@ -52,12 +57,26 @@ class ReasoningStepMapperTest {
     }
 
     @Test
-    void mapsSearchTraces() {
+    void mapsSearchTracesWithATraceQlQuery() {
         var step = mapper.map(ReasoningToolNames.SEARCH_TRACES,
-                Map.of("service", "checkout-service", "from", FROM, "to", TO));
+                Map.of("traceQl", "{ resource.service.name = \"checkout\" }", "from", FROM, "to", TO));
 
         assertThat(step).isInstanceOfSatisfying(SearchTraces.class,
-                s -> assertThat(s.service()).isEqualTo("checkout-service"));
+                s -> assertThat(s.traceQl()).isEqualTo("{ resource.service.name = \"checkout\" }"));
+    }
+
+    @Test
+    void mapsSchemaDiscoverySteps() {
+        assertThat(mapper.map(ReasoningToolNames.LIST_LOG_LABELS, Map.of()))
+                .isInstanceOf(ListLogLabels.class);
+        assertThat(mapper.map(ReasoningToolNames.LIST_METRIC_NAMES, Map.of()))
+                .isInstanceOf(ListMetricNames.class);
+        assertThat(mapper.map(ReasoningToolNames.LIST_TRACE_TAGS, Map.of()))
+                .isInstanceOf(ListTraceTags.class);
+        assertThat(mapper.map(ReasoningToolNames.LIST_LOG_LABEL_VALUES, Map.of("label", "service_name")))
+                .isInstanceOfSatisfying(ListLogLabelValues.class, v -> assertThat(v.label()).isEqualTo("service_name"));
+        assertThat(mapper.map(ReasoningToolNames.LIST_TRACE_TAG_VALUES, Map.of("tag", "resource.service.name")))
+                .isInstanceOfSatisfying(ListTraceTagValues.class, v -> assertThat(v.tag()).isEqualTo("resource.service.name"));
     }
 
     @Test

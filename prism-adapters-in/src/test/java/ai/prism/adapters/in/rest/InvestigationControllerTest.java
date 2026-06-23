@@ -38,7 +38,7 @@ class InvestigationControllerTest {
     private DashboardLinkPort links;
 
     private InvestigationController controller() {
-        return new InvestigationController(useCase, queries, links);
+        return new InvestigationController(useCase, queries, links, io.micrometer.observation.ObservationRegistry.NOOP);
     }
 
     @Test

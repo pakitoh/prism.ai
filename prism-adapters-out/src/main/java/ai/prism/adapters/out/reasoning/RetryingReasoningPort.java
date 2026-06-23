@@ -3,8 +3,10 @@ package ai.prism.adapters.out.reasoning;
 import ai.prism.domain.reasoning.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
 import ai.prism.domain.reasoning.ReasoningStep;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +26,12 @@ import org.slf4j.LoggerFactory;
  * (e.g. a 429) rather than giving up after a single pass over the model list.
  * Decoupling {@code maxAttempts} from the number of models means a transient
  * error can be retried more times than there are models.
+ *
+ * <p>Between a failed attempt and the next it waits with exponential backoff and
+ * full jitter — {@code min(maxBackoff, initialBackoff × 2^attempt)}, randomized in
+ * {@code [0, that]}. Without a pause, all attempts fire within milliseconds and
+ * simply pile more load onto an already-overloaded provider (a 503/429 spike never
+ * gets a chance to clear); the jitter avoids retrying every model in lockstep.
  */
 public class RetryingReasoningPort implements ReasoningPort {
 
@@ -39,10 +47,25 @@ public class RetryingReasoningPort implements ReasoningPort {
         }
     }
 
+    /** Pauses the current thread; abstracted so tests can verify backoff without real waits. */
+    @FunctionalInterface
+    public interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
     private final List<Delegate> delegates;
     private final int maxAttempts;
+    private final long initialBackoffMillis;
+    private final long maxBackoffMillis;
+    private final Sleeper sleeper;
 
+    /** Convenience constructor with no backoff — retained for tests and simple wiring. */
     public RetryingReasoningPort(List<Delegate> delegates, int maxAttempts) {
+        this(delegates, maxAttempts, Duration.ZERO, Duration.ZERO, Thread::sleep);
+    }
+
+    public RetryingReasoningPort(List<Delegate> delegates, int maxAttempts,
+                                 Duration initialBackoff, Duration maxBackoff, Sleeper sleeper) {
         Objects.requireNonNull(delegates, "delegates must not be null");
         if (delegates.isEmpty()) {
             throw new IllegalArgumentException("at least one reasoning delegate is required");
@@ -50,8 +73,16 @@ public class RetryingReasoningPort implements ReasoningPort {
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be at least 1");
         }
+        Objects.requireNonNull(initialBackoff, "initialBackoff must not be null");
+        Objects.requireNonNull(maxBackoff, "maxBackoff must not be null");
+        if (initialBackoff.isNegative() || maxBackoff.isNegative()) {
+            throw new IllegalArgumentException("backoff durations must not be negative");
+        }
         this.delegates = List.copyOf(delegates);
         this.maxAttempts = maxAttempts;
+        this.initialBackoffMillis = initialBackoff.toMillis();
+        this.maxBackoffMillis = maxBackoff.toMillis();
+        this.sleeper = Objects.requireNonNull(sleeper, "sleeper must not be null");
     }
 
     @Override
@@ -65,8 +96,14 @@ public class RetryingReasoningPort implements ReasoningPort {
             } catch (RuntimeException failure) {
                 lastFailure = failure;
                 lastModelId = delegate.modelId();
-                log.warn("Reasoning attempt {}/{} on model '{}' failed, rotating to next model: {}",
-                        attempt + 1, maxAttempts, delegate.modelId(), failure.getMessage());
+                boolean willRetry = attempt < maxAttempts - 1;
+                log.warn("Reasoning attempt {}/{} on model '{}' failed{}: {}",
+                        attempt + 1, maxAttempts, delegate.modelId(),
+                        willRetry ? ", backing off then rotating to next model" : "",
+                        failure.getMessage());
+                if (willRetry) {
+                    backoff(attempt);
+                }
             }
         }
         String errorMessage = "Reasoning failed after " + maxAttempts + " attempt(s) across "
@@ -75,6 +112,22 @@ public class RetryingReasoningPort implements ReasoningPort {
                 + (lastFailure != null ? lastFailure.getMessage() : "unknown");
         log.warn(errorMessage);
         throw new ReasoningException(errorMessage, lastFailure);
+    }
+
+    /** Sleeps for a jittered, exponentially-growing delay before the next attempt. */
+    private void backoff(int attempt) {
+        if (initialBackoffMillis == 0 && maxBackoffMillis == 0) {
+            return;
+        }
+        long exponential = initialBackoffMillis << Math.min(attempt, 30);  // initial × 2^attempt, guarded
+        long capped = Math.min(maxBackoffMillis, exponential < 0 ? maxBackoffMillis : exponential);
+        long jittered = capped <= 0 ? 0 : ThreadLocalRandom.current().nextLong(capped + 1);
+        try {
+            sleeper.sleep(jittered);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new ReasoningException("Reasoning retry interrupted while backing off", interrupted);
+        }
     }
 
     private List<String> modelIds() {

@@ -4,6 +4,7 @@ import ai.prism.domain.reasoning.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
 import ai.prism.domain.reasoning.ReasoningStep;
 import ai.prism.domain.investigation.Signal;
+import ai.prism.domain.investigation.SignalType;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,11 +41,18 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
             You MUST respond by calling exactly one tool:
               - search_past_investigations to recall whether this symptom was seen and resolved before
               - query_metrics / search_logs / get_trace / search_traces to gather more evidence
+              - list_metric_names / list_log_labels / list_log_label_values / list_trace_tags /
+                list_trace_tag_values to discover the schema before querying
               - conclude once the evidence supports a root cause
 
             Work like an SRE: start from the symptom, correlate across metrics, logs and
             traces, and narrow to the failing component. Time arguments (from/to) are
             ISO-8601 UTC instants. Do not ask the user questions; gather evidence and conclude.
+
+            Do not assume label, metric or tag names — they vary by stack. When unsure, discover
+            them first with the list_* tools, then query. An empty result usually means the name
+            was wrong, not that the service is absent: verify the name before inferring anything is
+            down, and never conclude an outage from empty results alone.
             """;
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiReasoningAdapter.class);
@@ -113,6 +121,11 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         }
     }
 
+    /** How many of the most recent signals are shown with their full (truncated) content. */
+    private static final int RECENT_FULL = 6;
+    /** Per-signal content cap; older bodies are dropped entirely (see {@link #RECENT_FULL}). */
+    private static final int CONTENT_CAP = 800;
+
     private static String renderUser(InvestigationContext context) {
         StringBuilder out = new StringBuilder();
         out.append("Problem: ").append(context.request().query()).append('\n');
@@ -120,19 +133,44 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
         context.request().window().ifPresent(w ->
                 out.append("Window: ").append(w.from()).append(" to ").append(w.to()).append('\n'));
 
+        out.append("\nYou are on step ").append(context.step()).append(" of at most ")
+                .append(context.maxSteps()).append(". Gather only the evidence you still need and ")
+                .append("conclude as soon as the root cause is supported — do not exhaust the budget exploring.\n");
+
         List<Signal> signals = context.priorSignals();
         if (signals.isEmpty()) {
             out.append("\nNo evidence gathered yet. Decide the first step.");
         } else {
+            // Every signal is listed by number and query so the model recalls what it already
+            // tried (and stops repeating queries); only the most recent few carry full bodies,
+            // keeping the prompt from ballooning as evidence accumulates.
+            int firstFull = Math.max(0, signals.size() - RECENT_FULL);
             out.append("\nEvidence gathered so far (referenceable by the leading number):\n");
             for (int i = 0; i < signals.size(); i++) {
                 Signal signal = signals.get(i);
                 out.append("- [").append(i + 1).append("] [").append(signal.type()).append("] ")
-                        .append(signal.query()).append(" =>\n")
-                        .append(signal.content()).append('\n');
+                        .append(signal.query());
+                if (i >= firstFull) {
+                    out.append(" =>\n").append(render(signal)).append('\n');
+                } else {
+                    out.append(" => [earlier result omitted]\n");
+                }
             }
             out.append("\nDecide the next step.");
         }
         return out.toString();
+    }
+
+    /**
+     * Renders a signal's content for the prompt. SCHEMA signals (seeded label/metric/tag names)
+     * are shown in full — they are reference data the model needs entire; truncating a long
+     * metric-name list would defeat the point. Everything else is capped at {@link #CONTENT_CAP}.
+     */
+    private static String render(Signal signal) {
+        String content = signal.content();
+        if (signal.type() == SignalType.SCHEMA || content.length() <= CONTENT_CAP) {
+            return content;
+        }
+        return content.substring(0, CONTENT_CAP) + "…[" + content.length() + " chars total]";
     }
 }

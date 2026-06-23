@@ -16,4 +16,7 @@ public interface MetricsPort {
      * @param window the time range to query over
      */
     Signal queryRange(String promQl, TimeWindow window);
+
+    /** Discovers the available metric names, returned as a schema {@link Signal}. */
+    Signal listMetricNames();
 }

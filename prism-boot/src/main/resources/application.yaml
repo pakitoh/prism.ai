@@ -58,11 +58,14 @@ prism:
     # spring.ai.model.embedding.text=none if running it without a GEMINI_API_KEY).
     store: ${PRISM_KNOWLEDGE_STORE:pgvector}
   reasoning:
-    # Two-tier retry: the HTTP client retries transient errors (429, 5xx) up to 2 times
-    # on the same model before raising. RetryingReasoningPort then rotates to the next
-    # model for up to max-attempts total reasoning attempts. One reasoning attempt may
-    # therefore represent up to 3 HTTP calls, so the worst-case total is max-attempts * 3.
-    max-attempts: ${PRISM_MAX_ATTEMPTS:24}
+    # Two-tier retry: the HTTP client retries transient errors (429, 5xx) on the same model
+    # before raising. RetryingReasoningPort then rotates to the next model for up to
+    # max-attempts total reasoning attempts, waiting between attempts with exponential
+    # backoff + jitter (retry-backoff .. retry-backoff-max) so an overloaded provider can
+    # recover instead of being hammered.
+    max-attempts: ${PRISM_MAX_ATTEMPTS:8}
+    retry-backoff: ${PRISM_RETRY_BACKOFF:500ms}
+    retry-backoff-max: ${PRISM_RETRY_BACKOFF_MAX:8s}
     # Ordered list — first entry is tried first. Entries with only 'id' use the
     # auto-configured ChatModel (Spring AI starter). Entries with 'base-url' and 'api-key'
     # target that OpenAI-compatible endpoint; both fields are required or startup fails.
@@ -71,19 +74,19 @@ prism:
     - id: llama-3.3-70b-versatile
       api-key: ${GROQ_API_KEY}
       base-url: https://api.groq.com/openai/v1
-    - id: qwen/qwen3-32b
-      api-key: ${GROQ_API_KEY}
-      base-url: https://api.groq.com/openai/v1
-    - id: openai/gpt-oss-120b
-      api-key: ${GROQ_API_KEY}
-      base-url: https://api.groq.com/openai/v1
     - id: gemini-3.5-flash
       api-key: ${GEMINI_API_KEY}
       base-url: https://generativelanguage.googleapis.com/v1beta/openai
-    - id: gemini-3.1-flash-lite
+    - id: qwen/qwen3-32b
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+    - id: gemma-4-31b-it
       api-key: ${GEMINI_API_KEY}
       base-url: https://generativelanguage.googleapis.com/v1beta/openai
-    - id: gemma-4-31b-it
+    - id: openai/gpt-oss-120b
+      api-key: ${GROQ_API_KEY}
+      base-url: https://api.groq.com/openai/v1
+    - id: gemini-3.1-flash-lite
       api-key: ${GEMINI_API_KEY}
       base-url: https://generativelanguage.googleapis.com/v1beta/openai
   telemetry:
@@ -100,13 +103,14 @@ prism:
     loki-uid: ${PRISM_LOKI_UID:loki}
     tempo-uid: ${PRISM_TEMPO_UID:tempo}
   investigation:
-    max-steps: ${PRISM_MAX_STEPS:128}
+    max-steps: ${PRISM_MAX_STEPS:30}
 
 logging:
   level:
-    ai.prism.adapters.out.reasoning.SpringAiReasoningAdapter: DEBUG
+    ai.prism.adapters.out.reasoning.SpringAiReasoningAdapter: INFO
     # add TRACE here instead if you also want the system prompt
 
+#    ai.prism.adapters.out.http.ObservedHttpExecutor: TRACE
     ai.prism.adapters.out: DEBUG
     # or narrow it, e.g. ai.prism.adapters.out.investigation: DEBUG
     # add TRACE on ai.prism.adapters.out.http.ObservedHttpExecutor for full (untruncated) telemetry bodies

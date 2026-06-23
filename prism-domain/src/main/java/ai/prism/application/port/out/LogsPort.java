@@ -16,4 +16,10 @@ public interface LogsPort {
      * @param window the time range to query over
      */
     Signal search(String logQl, TimeWindow window);
+
+    /** Discovers the available log label names, returned as a schema {@link Signal}. */
+    Signal listLabelNames();
+
+    /** Discovers the values of one log label, returned as a schema {@link Signal}. */
+    Signal listLabelValues(String label);
 }

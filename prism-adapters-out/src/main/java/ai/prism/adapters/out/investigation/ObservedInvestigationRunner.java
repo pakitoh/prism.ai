@@ -33,6 +33,9 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
     public Investigation run(Investigation investigation) {
         Observation observation = Observation.createNotStarted("prism.investigation", registry)
                 .lowCardinalityKeyValue("source", investigation.request().source().name());
+        // Back-pointer to the request trace that started this (separate) investigation trace.
+        RequestTrace.currentTraceId()
+                .ifPresent(traceId -> observation.highCardinalityKeyValue("request.trace_id", traceId));
         return observation.observe(() -> {
             log.info("Investigation started: service={} query=\"{}\"",
                     investigation.request().service().orElse("-"), investigation.request().query());

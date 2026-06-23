@@ -37,14 +37,27 @@ public class TempoAdapter implements TracingPort {
     }
 
     @Override
-    public Signal searchTraces(String service, TimeWindow window) {
-        String tag = "service.name=" + service;
+    public Signal searchTraces(String traceQl, TimeWindow window) {
         URI uri = URI.create(baseUrl + "/api/search"
-                + "?tags=" + HttpUris.encode(tag)
+                + "?q=" + HttpUris.encode(traceQl)
                 + "&start=" + window.from().getEpochSecond()
                 + "&end=" + window.to().getEpochSecond()
                 + "&limit=" + SEARCH_LIMIT);
         String body = http.get(uri);
-        return Signal.over(SignalType.TRACE, tag, body, clock.instant(), window);
+        return Signal.over(SignalType.TRACE, traceQl, body, clock.instant(), window);
+    }
+
+    @Override
+    public Signal listTagNames() {
+        // v2: tags grouped by scope (resource / span / intrinsic), so the model can write
+        // correctly-scoped TraceQL (e.g. resource.service.name, not bare service.name).
+        String body = http.get(URI.create(baseUrl + "/api/v2/search/tags"));
+        return Signal.of(SignalType.SCHEMA, "trace tags", body, clock.instant());
+    }
+
+    @Override
+    public Signal listTagValues(String tag) {
+        URI uri = URI.create(baseUrl + "/api/v2/search/tag/" + HttpUris.encode(tag) + "/values");
+        return Signal.of(SignalType.SCHEMA, "trace tag values: " + tag, http.get(uri), clock.instant());
     }
 }

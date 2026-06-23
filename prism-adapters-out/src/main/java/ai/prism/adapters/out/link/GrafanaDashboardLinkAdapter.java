@@ -99,7 +99,7 @@ public class GrafanaDashboardLinkAdapter implements DashboardLinkPort {
             case METRIC -> datasources.prometheusUid();
             case LOG -> datasources.lokiUid();
             case TRACE -> datasources.tempoUid();
-            case MEMORY -> null;
+            case MEMORY, SCHEMA -> null;
         };
         if (uid == null || uid.isBlank()) {
             return null;
@@ -112,7 +112,7 @@ public class GrafanaDashboardLinkAdapter implements DashboardLinkPort {
             case METRIC -> "prometheus";
             case LOG -> "loki";
             case TRACE -> "tempo";
-            case MEMORY -> throw new IllegalStateException("MEMORY has no datasource");
+            case MEMORY, SCHEMA -> throw new IllegalStateException(type + " has no datasource");
         };
     }
 

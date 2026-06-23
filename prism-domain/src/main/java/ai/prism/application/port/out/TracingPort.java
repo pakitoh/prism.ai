@@ -12,6 +12,12 @@ public interface TracingPort {
     /** Fetches a single trace by id and returns it as a {@link Signal}. */
     Signal getTrace(String traceId);
 
-    /** Searches for traces of a service in a window and returns the result as a {@link Signal}. */
-    Signal searchTraces(String service, TimeWindow window);
+    /** Searches for traces matching a TraceQL query in a window and returns the result as a {@link Signal}. */
+    Signal searchTraces(String traceQl, TimeWindow window);
+
+    /** Discovers the available trace tag names (grouped by scope), returned as a schema {@link Signal}. */
+    Signal listTagNames();
+
+    /** Discovers the values of one trace tag, returned as a schema {@link Signal}. */
+    Signal listTagValues(String tag);
 }

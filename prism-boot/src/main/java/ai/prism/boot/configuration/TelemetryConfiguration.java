@@ -14,6 +14,7 @@ import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Wires the outbound telemetry ports (Prometheus, Loki, Tempo) over a single
@@ -35,9 +36,9 @@ class TelemetryConfiguration {
     }
 
     @Bean
-    LogsPort logsPort(HttpExecutor http, Clock clock,
+    LogsPort logsPort(HttpExecutor http, Clock clock, JsonMapper jsonMapper,
                       @Value("${prism.telemetry.loki-url}") String baseUrl) {
-        return new LokiAdapter(http, baseUrl, clock);
+        return new LokiAdapter(http, baseUrl, clock, jsonMapper);
     }
 
     @Bean

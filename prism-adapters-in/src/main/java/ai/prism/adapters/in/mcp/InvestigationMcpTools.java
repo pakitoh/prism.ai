@@ -11,6 +11,8 @@ import ai.prism.domain.investigation.InvestigationStatus;
 import ai.prism.domain.investigation.RequestSource;
 import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.TimeWindow;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -32,12 +34,14 @@ public class InvestigationMcpTools {
     private final InvestigationCommandsUseCase commands;
     private final InvestigationQueriesUseCase queries;
     private final DashboardLinkPort dashboardLinks;
+    private final ObservationRegistry observationRegistry;
 
     public InvestigationMcpTools(InvestigationCommandsUseCase commands, InvestigationQueriesUseCase queries,
-                                 DashboardLinkPort dashboardLinks) {
+                                 DashboardLinkPort dashboardLinks, ObservationRegistry observationRegistry) {
         this.commands = Objects.requireNonNull(commands, "commands must not be null");
         this.queries = Objects.requireNonNull(queries, "queries must not be null");
         this.dashboardLinks = Objects.requireNonNull(dashboardLinks, "dashboardLinks must not be null");
+        this.observationRegistry = Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
     }
 
     @Tool(name = "investigate", description = """
@@ -54,6 +58,10 @@ public class InvestigationMcpTools {
                 window(from, to),
                 RequestSource.MANUAL);
         InvestigationId id = commands.submit(request);
+        Observation current = observationRegistry.getCurrentObservation();
+        if (current != null) {
+            current.highCardinalityKeyValue("investigation.id", id.toString());
+        }
         return new AcceptedInvestigation(id.toString(), InvestigationStatus.PENDING.name());
     }
 

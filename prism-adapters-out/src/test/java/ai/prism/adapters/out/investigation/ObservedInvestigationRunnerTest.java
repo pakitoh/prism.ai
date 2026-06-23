@@ -31,4 +31,20 @@ class ObservedInvestigationRunnerTest {
                 .hasLowCardinalityKeyValue("source", "MANUAL")
                 .hasLowCardinalityKeyValue("outcome", "CONCLUDED");
     }
+
+    @Test
+    void backLinksToTheRequestTraceWhenPropagated() {
+        Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
+        concluded.start();
+        concluded.conclude(Finding.of("rc", "ev", "act", Confidence.LOW));
+        InvestigationRunner runner = new ObservedInvestigationRunner(investigation -> concluded, registry);
+
+        RequestTrace.runWith("req-trace-abc", () ->
+                runner.run(Investigation.open(InvestigationRequest.manual("why errors?"))));
+
+        TestObservationRegistryAssert.assertThat(registry)
+                .hasObservationWithNameEqualTo("prism.investigation")
+                .that()
+                .hasHighCardinalityKeyValue("request.trace_id", "req-trace-abc");
+    }
 }

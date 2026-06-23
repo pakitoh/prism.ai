@@ -39,6 +39,12 @@ public class PrometheusAdapter implements MetricsPort {
         return Signal.over(SignalType.METRIC, promQl, body, clock.instant(), window);
     }
 
+    @Override
+    public Signal listMetricNames() {
+        String body = http.get(URI.create(baseUrl + "/api/v1/label/__name__/values"));
+        return Signal.of(SignalType.SCHEMA, "metric names", body, clock.instant());
+    }
+
     /** A step that keeps the result around {@value #TARGET_POINTS} points, in seconds. */
     private static String step(TimeWindow window) {
         long seconds = Math.max(1, window.duration().toSeconds() / TARGET_POINTS);

@@ -4,6 +4,11 @@ import ai.prism.domain.reasoning.InvestigationContext;
 import ai.prism.application.port.out.ReasoningPort;
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
+import ai.prism.domain.reasoning.ListLogLabels;
+import ai.prism.domain.reasoning.ListLogLabelValues;
+import ai.prism.domain.reasoning.ListMetricNames;
+import ai.prism.domain.reasoning.ListTraceTags;
+import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.ReasoningStep;
 import ai.prism.domain.reasoning.SearchLogs;
@@ -50,6 +55,11 @@ public class ObservedReasoningPort implements ReasoningPort {
             case SearchLogs ignored -> "search_logs";
             case GetTrace ignored -> "get_trace";
             case SearchTraces ignored -> "search_traces";
+            case ListLogLabels ignored -> "list_log_labels";
+            case ListLogLabelValues ignored -> "list_log_label_values";
+            case ListMetricNames ignored -> "list_metric_names";
+            case ListTraceTags ignored -> "list_trace_tags";
+            case ListTraceTagValues ignored -> "list_trace_tag_values";
             case SearchPastInvestigations ignored -> "search_past_investigations";
             case Conclusion ignored -> "conclusion";
         };
@@ -61,7 +71,12 @@ public class ObservedReasoningPort implements ReasoningPort {
             case QueryMetrics m -> "query_metrics promQl=\"" + m.promQl() + "\" window=" + window(m.window());
             case SearchLogs l -> "search_logs logQl=\"" + l.logQl() + "\" window=" + window(l.window());
             case GetTrace t -> "get_trace traceId=" + t.traceId();
-            case SearchTraces s -> "search_traces service=" + s.service() + " window=" + window(s.window());
+            case SearchTraces s -> "search_traces traceQl=\"" + s.traceQl() + "\" window=" + window(s.window());
+            case ListLogLabels ignored -> "list_log_labels";
+            case ListLogLabelValues v -> "list_log_label_values label=" + v.label();
+            case ListMetricNames ignored -> "list_metric_names";
+            case ListTraceTags ignored -> "list_trace_tags";
+            case ListTraceTagValues v -> "list_trace_tag_values tag=" + v.tag();
             case SearchPastInvestigations p -> "search_past_investigations query=\"" + p.query() + "\"";
             case Conclusion c -> "conclude rootCause=\"" + c.finding().rootCause()
                     + "\" confidence=" + c.finding().confidence();
