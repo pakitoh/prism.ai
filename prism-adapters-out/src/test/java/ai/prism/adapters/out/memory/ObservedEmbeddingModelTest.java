@@ -3,8 +3,7 @@ package ai.prism.adapters.out.memory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.micrometer.observation.tck.TestObservationRegistry;
-import io.micrometer.observation.tck.TestObservationRegistryAssert;
+import io.opentelemetry.api.OpenTelemetry;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -13,36 +12,25 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 
 class ObservedEmbeddingModelTest {
 
-    private final TestObservationRegistry registry = TestObservationRegistry.create();
+    // A no-op OpenTelemetry exercises the span lifecycle without an SDK; the prism.embedding
+    // span (inputs/dimensions attributes) is verified live in Tempo.
+    private final OpenTelemetry openTelemetry = OpenTelemetry.noop();
 
     @Test
-    void recordsAnEmbeddingObservationTaggedWithInputsAndDimensions() {
-        EmbeddingModel delegate = new StubEmbeddingModel(new float[] {0.1f, 0.2f, 0.3f});
-        EmbeddingModel model = new ObservedEmbeddingModel(delegate, registry);
+    void embedsAndReturnsTheVector() {
+        EmbeddingModel model = new ObservedEmbeddingModel(
+                new StubEmbeddingModel(new float[] {0.1f, 0.2f, 0.3f}), openTelemetry);
 
-        float[] vector = model.embed("checkout-service erroring");
-
-        assertThat(vector).containsExactly(0.1f, 0.2f, 0.3f);
-        TestObservationRegistryAssert.assertThat(registry)
-                .hasObservationWithNameEqualTo("prism.embedding")
-                .that()
-                .hasBeenStopped()
-                .hasLowCardinalityKeyValue("inputs", "1")
-                .hasLowCardinalityKeyValue("dimensions", "3");
+        assertThat(model.embed("checkout-service erroring")).containsExactly(0.1f, 0.2f, 0.3f);
     }
 
     @Test
-    void propagatesAndStopsObservationOnFailure() {
-        EmbeddingModel delegate = new StubEmbeddingModel(null); // throws on embed
-        EmbeddingModel model = new ObservedEmbeddingModel(delegate, registry);
+    void propagatesFailures() {
+        EmbeddingModel model = new ObservedEmbeddingModel(new StubEmbeddingModel(null), openTelemetry);
 
         assertThatThrownBy(() -> model.embed("boom"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("embedding unavailable");
-        TestObservationRegistryAssert.assertThat(registry)
-                .hasObservationWithNameEqualTo("prism.embedding")
-                .that()
-                .hasBeenStopped();
     }
 
     /** Minimal {@link EmbeddingModel}: a non-null vector embeds successfully; null throws. */

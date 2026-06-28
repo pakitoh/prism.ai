@@ -15,38 +15,48 @@ import ai.prism.domain.reasoning.SearchLogs;
 import ai.prism.domain.reasoning.SearchPastInvestigations;
 import ai.prism.domain.reasoning.SearchTraces;
 import ai.prism.domain.investigation.TimeWindow;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Instruments each reasoning step: a {@code prism.reasoning.step} span and timer
- * tagged by the kind of step the model chose. Wrapping the composed
- * {@link ReasoningPort} (after fallback) gives one observation per loop iteration.
+ * Instruments each reasoning step: a {@code prism.reasoning.step} span (created via the
+ * OpenTelemetry API, so it nests under the current {@code prism.investigation} span) tagged
+ * by the kind of step the model chose. Wrapping the composed {@link ReasoningPort} (after
+ * fallback) gives one span per loop iteration — i.e. one per model decision/LLM call.
  */
 public class ObservedReasoningPort implements ReasoningPort {
 
     private static final Logger log = LoggerFactory.getLogger(ObservedReasoningPort.class);
 
     private final ReasoningPort delegate;
-    private final ObservationRegistry registry;
+    private final Tracer tracer;
 
-    public ObservedReasoningPort(ReasoningPort delegate, ObservationRegistry registry) {
+    public ObservedReasoningPort(ReasoningPort delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
-        this.registry = Objects.requireNonNull(registry, "registry must not be null");
+        Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
+        this.tracer = openTelemetry.getTracer("ai.prism.reasoning");
     }
 
     @Override
     public ReasoningStep nextStep(InvestigationContext context) {
-        Observation observation = Observation.createNotStarted("prism.reasoning.step", registry);
-        return observation.observe(() -> {
+        Span span = tracer.spanBuilder("prism.reasoning.step").startSpan();
+        try (Scope ignored = span.makeCurrent()) {
             ReasoningStep step = delegate.nextStep(context);
-            observation.lowCardinalityKeyValue("step.kind", kindOf(step));
+            span.setAttribute("step.kind", kindOf(step));
             log.debug("Next tool: {}", describe(step));
             return step;
-        });
+        } catch (RuntimeException failure) {
+            span.setStatus(StatusCode.ERROR, failure.getMessage() != null ? failure.getMessage() : failure.toString());
+            throw failure;
+        } finally {
+            span.end();
+        }
     }
 
     private static String kindOf(ReasoningStep step) {

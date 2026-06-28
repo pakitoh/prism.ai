@@ -50,7 +50,8 @@ class ReasoningConfiguration {
     @Bean
     ReasoningPort reasoningPort(JsonMapper jsonMapper,
                                 ReasoningProperties properties,
-                                ObservationRegistry observationRegistry) {
+                                ObservationRegistry observationRegistry,
+                                io.opentelemetry.api.OpenTelemetry openTelemetry) {
         List<ReasoningProperties.ModelConfig> models = properties.models();
         if (models == null || models.isEmpty()) {
             throw new IllegalArgumentException("No models configured!!");
@@ -69,7 +70,7 @@ class ReasoningConfiguration {
         return new ObservedReasoningPort(
                 new RetryingReasoningPort(delegates, properties.maxAttempts(),
                         properties.retryBackoffOrDefault(), properties.retryBackoffMaxOrDefault(), Thread::sleep),
-                observationRegistry);
+                openTelemetry);
     }
 
     private static ChatModel buildOpenAiCompatibleChatModel(ReasoningProperties.ModelConfig config,

@@ -4,7 +4,7 @@ import ai.prism.adapters.out.memory.PgVectorMemory;
 import ai.prism.adapters.out.memory.TokenOverlapMemory;
 import ai.prism.adapters.out.memory.ObservedEmbeddingModel;
 import ai.prism.application.port.out.MemoryPort;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import javax.sql.DataSource;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -24,9 +24,9 @@ class MemoryConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "prism.knowledge", name = "store", havingValue = "pgvector", matchIfMissing = true)
     MemoryPort pgVectorInvestigationMemory(EmbeddingModel embeddingModel, DataSource dataSource,
-                                           Clock clock, ObservationRegistry observationRegistry) {
+                                           Clock clock, OpenTelemetry openTelemetry) {
         // Decorate the autoconfigured embedding model so each call is logged and traced.
-        EmbeddingModel observed = new ObservedEmbeddingModel(embeddingModel, observationRegistry);
+        EmbeddingModel observed = new ObservedEmbeddingModel(embeddingModel, openTelemetry);
         return new PgVectorMemory(observed, dataSource, clock);
     }
 

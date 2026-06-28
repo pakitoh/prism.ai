@@ -11,43 +11,33 @@ import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.InvestigationRequest;
 import ai.prism.domain.investigation.TimeWindow;
-import io.micrometer.observation.tck.TestObservationRegistry;
-import io.micrometer.observation.tck.TestObservationRegistryAssert;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 class ObservedReasoningPortTest {
 
-    private final TestObservationRegistry registry = TestObservationRegistry.create();
+    // A no-op OpenTelemetry exercises the span lifecycle without an SDK; the actual
+    // prism.reasoning.step span (nested under prism.investigation) is verified live in Tempo.
+    private final OpenTelemetry openTelemetry = OpenTelemetry.noop();
     private final InvestigationContext context =
             InvestigationContext.forRequest(InvestigationRequest.manual("why errors?"));
 
     @Test
-    void recordsAStepObservationTaggedAsConclusion() {
+    void returnsTheDelegatesConclusionStep() {
         ReasoningStep step = new Conclusion(Finding.of("rc", "ev", "act", Confidence.LOW));
-        ReasoningPort port = new ObservedReasoningPort(ctx -> step, registry);
+        ReasoningPort port = new ObservedReasoningPort(ctx -> step, openTelemetry);
 
-        ReasoningStep nextStep = port.nextStep(context);
-
-        assertThat(nextStep).isSameAs(step);
-        TestObservationRegistryAssert.assertThat(registry)
-                .hasObservationWithNameEqualTo("prism.reasoning.step")
-                .that()
-                .hasBeenStopped()
-                .hasLowCardinalityKeyValue("step.kind", "conclusion");
+        assertThat(port.nextStep(context)).isSameAs(step);
     }
 
     @Test
-    void tagsAToolStepByItsKind() {
+    void returnsAToolStepFromTheDelegate() {
         TimeWindow window = new TimeWindow(
                 Instant.parse("2026-06-10T10:00:00Z"), Instant.parse("2026-06-10T10:30:00Z"));
-        ReasoningPort port = new ObservedReasoningPort(ctx -> new QueryMetrics("up", window), registry);
+        QueryMetrics step = new QueryMetrics("up", window);
+        ReasoningPort port = new ObservedReasoningPort(ctx -> step, openTelemetry);
 
-        port.nextStep(context);
-
-        TestObservationRegistryAssert.assertThat(registry)
-                .hasObservationWithNameEqualTo("prism.reasoning.step")
-                .that()
-                .hasLowCardinalityKeyValue("step.kind", "query_metrics");
+        assertThat(port.nextStep(context)).isSameAs(step);
     }
 }

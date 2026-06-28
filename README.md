@@ -108,7 +108,7 @@ Every completed investigation is embedded and stored in pgvector. When a similar
 
 ### Self-observability
 
-prism.ai instruments itself with OpenTelemetry and exports its own metrics, traces and logs (OTLP) to the very stack it investigates — Tempo, Prometheus and Loki. Because the loop runs asynchronously off the request thread, each investigation is its **own** trace — a `prism.investigation` root span over every reasoning step and tool call — correlated to the originating request trace by a shared `investigation.id` (on both) and a `request.trace_id` back-pointer. Per-investigation metrics (outcome, duration, step kinds, telemetry-query backends) come from `Observed*` decorators wrapping the ports, so the domain stays instrumentation-free. The running build is identifiable too: the git commit is logged at startup and exposed at `/actuator/info`.
+prism.ai instruments itself with **OpenTelemetry** — the single telemetry façade — and exports its own traces, logs and metrics (OTLP) to the very stack it investigates: Tempo, Prometheus and Loki. The OpenTelemetry Spring Boot starter provides the SDK, auto-instrumentation (HTTP server, JDBC) and log↔trace correlation; custom spans are created through the OpenTelemetry API in `Observed*` decorators that wrap the ports, so the domain stays instrumentation-free. Because the loop runs asynchronously off the request thread, each investigation is its **own** trace — a `prism.investigation` root span with a `prism.reasoning.step` child per model decision, `prism.telemetry.query` children for the Loki/Prometheus/Tempo calls, and `prism.embedding` for memory — so a whole investigation is laid out as one tree. The running build is identifiable too: the git commit is logged at startup and exposed at `/actuator/info`.
 
 Agent-quality evaluation via [Langfuse](https://langfuse.com) — scoring each investigation's reasoning — is planned for a later phase.
 
@@ -156,7 +156,7 @@ Services after startup:
 | Event bus | Kafka (KRaft) + Schema Registry |
 | MCP interface | MCP Java SDK — Streamable HTTP transport |
 | Application | Java 25 · Maven · Spring Boot 4 |
-| Self-observability | Micrometer + OpenTelemetry (OTLP) → its own Tempo · Prometheus · Loki |
+| Self-observability | OpenTelemetry (traces + logs) · Micrometer metrics · OTLP → its own Tempo · Prometheus · Loki |
 
 
 ---

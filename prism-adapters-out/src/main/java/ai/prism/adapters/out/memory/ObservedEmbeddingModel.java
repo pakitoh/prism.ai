@@ -1,7 +1,10 @@
 package ai.prism.adapters.out.memory;
 
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -30,11 +33,12 @@ public class ObservedEmbeddingModel implements EmbeddingModel {
     private static final Logger log = LoggerFactory.getLogger(ObservedEmbeddingModel.class);
 
     private final EmbeddingModel delegate;
-    private final ObservationRegistry registry;
+    private final Tracer tracer;
 
-    public ObservedEmbeddingModel(EmbeddingModel delegate, ObservationRegistry registry) {
+    public ObservedEmbeddingModel(EmbeddingModel delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
-        this.registry = Objects.requireNonNull(registry, "registry must not be null");
+        Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
+        this.tracer = openTelemetry.getTracer("ai.prism.embedding");
     }
 
     @Override
@@ -56,22 +60,23 @@ public class ObservedEmbeddingModel implements EmbeddingModel {
     }
 
     private <T> T observe(int inputs, Supplier<T> call, ToIntFunction<T> dimensions) {
-        Observation observation = Observation.createNotStarted("prism.embedding", registry)
-                .lowCardinalityKeyValue("inputs", Integer.toString(inputs));
+        Span span = tracer.spanBuilder("prism.embedding")
+                .setAttribute("inputs", (long) inputs)
+                .startSpan();
         long start = System.nanoTime();
-        try {
-            T result = observation.observe(() -> {
-                T value = call.get();
-                observation.lowCardinalityKeyValue("dimensions", Integer.toString(dimensions.applyAsInt(value)));
-                return value;
-            });
+        try (Scope ignored = span.makeCurrent()) {
+            T result = call.get();
+            span.setAttribute("dimensions", (long) dimensions.applyAsInt(result));
             log.info("Embedded {} input(s) -> vector dim {} in {} ms",
                     inputs, dimensions.applyAsInt(result), millisSince(start));
             return result;
         } catch (RuntimeException failure) {
+            span.setStatus(StatusCode.ERROR, failure.toString());
             log.warn("Embedding failed for {} input(s) after {} ms: {}",
                     inputs, millisSince(start), failure.toString());
             throw failure;
+        } finally {
+            span.end();
         }
     }
 

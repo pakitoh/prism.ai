@@ -9,7 +9,7 @@ import ai.prism.adapters.out.tracing.TempoAdapter;
 import ai.prism.application.port.out.LogsPort;
 import ai.prism.application.port.out.MetricsPort;
 import ai.prism.application.port.out.TracingPort;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -24,9 +24,9 @@ import tools.jackson.databind.json.JsonMapper;
 class TelemetryConfiguration {
 
     @Bean
-    HttpExecutor httpExecutor(ObservationRegistry observationRegistry) {
+    HttpExecutor httpExecutor(OpenTelemetry openTelemetry) {
         // Instrument every outbound telemetry query at the single choke point.
-        return new ObservedHttpExecutor(JdkHttpExecutor.create(), observationRegistry);
+        return new ObservedHttpExecutor(JdkHttpExecutor.create(), openTelemetry);
     }
 
     @Bean

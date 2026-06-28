@@ -1,7 +1,10 @@
 package ai.prism.adapters.out.http;
 
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import java.net.URI;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -9,9 +12,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Instruments every outbound telemetry HTTP query at the single {@link HttpExecutor}
- * choke point: a {@code prism.telemetry.query} span and timer tagged by backend.
- * One decorator covers the Prometheus, Loki and Tempo adapters, and makes each
- * tool call a child span of the investigation trace.
+ * choke point: a {@code prism.telemetry.query} span (created via the OpenTelemetry API, so it
+ * nests under the current {@code prism.investigation} span) tagged by backend. One decorator
+ * covers the Prometheus, Loki and Tempo adapters, making each evidence-gathering call a child
+ * span of the investigation trace.
  */
 public class ObservedHttpExecutor implements HttpExecutor {
 
@@ -20,22 +24,24 @@ public class ObservedHttpExecutor implements HttpExecutor {
     private static final int PREVIEW_LIMIT = 1000;
 
     private final HttpExecutor delegate;
-    private final ObservationRegistry registry;
+    private final Tracer tracer;
 
-    public ObservedHttpExecutor(HttpExecutor delegate, ObservationRegistry registry) {
+    public ObservedHttpExecutor(HttpExecutor delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
-        this.registry = Objects.requireNonNull(registry, "registry must not be null");
+        Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
+        this.tracer = openTelemetry.getTracer("ai.prism.telemetry");
     }
 
     @Override
     public String get(URI uri) {
         String backend = backendOf(uri);
-        Observation observation = Observation.createNotStarted("prism.telemetry.query", registry)
-                .lowCardinalityKeyValue("backend", backend)
-                .highCardinalityKeyValue("uri", uri.toString());
+        Span span = tracer.spanBuilder("prism.telemetry.query")
+                .setAttribute("backend", backend)
+                .setAttribute("uri", uri.toString())
+                .startSpan();
         log.debug("Telemetry {} query: {}", backend, uri);
-        try {
-            String body = observation.observe(() -> delegate.get(uri));
+        try (Scope ignored = span.makeCurrent()) {
+            String body = delegate.get(uri);
             if (log.isTraceEnabled()) {
                 log.trace("Telemetry {} result ({} chars): {}", backend, body.length(), body);
             } else if (log.isDebugEnabled()) {
@@ -43,8 +49,11 @@ public class ObservedHttpExecutor implements HttpExecutor {
             }
             return body;
         } catch (RuntimeException failure) {
+            span.setStatus(StatusCode.ERROR, failure.getMessage() != null ? failure.getMessage() : failure.toString());
             log.warn("Telemetry {} query failed: {} -> {}", backend, uri, failure.getMessage());
             throw failure;
+        } finally {
+            span.end();
         }
     }
 
