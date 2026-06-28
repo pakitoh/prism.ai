@@ -62,9 +62,12 @@
 
 
 
-        <!-- Observability: metrics, traces and logs exported via OTLP to the collector.
-             Actuator + Micrometer Tracing provide the instrumentation; the exporters
-             push OTLP (metrics via OTLP push since Prometheus only scrapes the collector). -->
+        <!-- Observability: OpenTelemetry is the single telemetry façade. The Spring Boot starter
+             provides the SDK, auto-instrumentation (HTTP, JDBC, …), OTLP export of traces/metrics/
+             logs, and the Logback appender that correlates logs to spans. Custom spans are created
+             through the OpenTelemetry API directly (see the Observed* decorators) so they share that
+             SDK — do NOT add micrometer-tracing-bridge-otel, it is a competing tracer that suppresses
+             those spans. Micrometer is kept for metrics only. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -72,10 +75,6 @@
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>

@@ -33,8 +33,13 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- Observability: Micrometer Observation API for the instrumentation decorators
-             (each Observation yields both a metric timer and a trace span). -->
+        <!-- Observability: the OpenTelemetry API is the tracing façade — instrumentation
+             decorators create spans through it directly. Micrometer Observation is retained
+             for the metric timers some decorators still emit. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-observation</artifactId>

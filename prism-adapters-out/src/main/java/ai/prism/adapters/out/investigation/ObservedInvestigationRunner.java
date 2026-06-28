@@ -4,49 +4,56 @@ import ai.prism.application.service.InvestigationRunner;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationStatus;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Instruments running an investigation: one observation per run (yielding a
- * {@code prism.investigation} span and timer, tagged by source and outcome) plus
- * lifecycle logs. Wraps the {@link InvestigationRunner} so the application stays free
- * of any observability dependency, and so sync and background (async) runs are
- * instrumented identically.
+ * Instruments running an investigation with a {@code prism.investigation} span — created via
+ * the OpenTelemetry API (the app's single telemetry façade), not Micrometer, so it lands in the
+ * same SDK as the auto-instrumentation and the Logback OTLP appender. The span is made current
+ * for the whole run, so every reasoning step and tool-call log emitted on this thread carries
+ * the investigation's trace id. Wraps the {@link InvestigationRunner} so the application layer
+ * stays free of any observability dependency, and sync and async runs are instrumented alike.
  */
 public class ObservedInvestigationRunner implements InvestigationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ObservedInvestigationRunner.class);
 
     private final InvestigationRunner delegate;
-    private final ObservationRegistry registry;
+    private final Tracer tracer;
 
-    public ObservedInvestigationRunner(InvestigationRunner delegate, ObservationRegistry registry) {
+    public ObservedInvestigationRunner(InvestigationRunner delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
-        this.registry = Objects.requireNonNull(registry, "registry must not be null");
+        Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
+        this.tracer = openTelemetry.getTracer("ai.prism.investigation");
     }
 
     @Override
     public Investigation run(Investigation investigation) {
-        Observation observation = Observation.createNotStarted("prism.investigation", registry)
-                .lowCardinalityKeyValue("source", investigation.request().source().name());
-        // Back-pointer to the request trace that started this (separate) investigation trace.
-        RequestTrace.currentTraceId()
-                .ifPresent(traceId -> observation.highCardinalityKeyValue("request.trace_id", traceId));
-        return observation.observe(() -> {
+        Span span = tracer.spanBuilder("prism.investigation")
+                .setAttribute("source", investigation.request().source().name())
+                .startSpan();
+        try (Scope ignored = span.makeCurrent()) {
             log.info("Investigation started: service={} query=\"{}\"",
                     investigation.request().service().orElse("-"), investigation.request().query());
             Investigation result = delegate.run(investigation);
-            observation.lowCardinalityKeyValue("outcome", result.status().name());
-            observation.highCardinalityKeyValue("investigation.id", result.id().toString());
-            observation.highCardinalityKeyValue("signals.gathered",
-                    String.valueOf(result.signals().size()));
+            span.setAttribute("outcome", result.status().name());
+            span.setAttribute("investigation.id", result.id().toString());
+            span.setAttribute("signals.gathered", result.signals().size());
             logOutcome(result);
             return result;
-        });
+        } catch (RuntimeException failure) {
+            span.setStatus(StatusCode.ERROR, failure.getMessage() != null ? failure.getMessage() : failure.toString());
+            throw failure;
+        } finally {
+            span.end();
+        }
     }
 
     private static void logOutcome(Investigation investigation) {

@@ -2,7 +2,6 @@ package ai.prism.boot.configuration;
 
 import ai.prism.adapters.out.investigation.RememberingInvestigationRunner;
 import ai.prism.adapters.out.investigation.ObservedInvestigationRunner;
-import ai.prism.adapters.out.investigation.RequestTrace;
 import ai.prism.adapters.out.persistence.PostgresInvestigationRepository;
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
@@ -16,13 +15,10 @@ import ai.prism.application.service.InvestigationCommandsService;
 import ai.prism.application.service.InvestigationLoop;
 import ai.prism.application.service.InvestigationQueriesService;
 import ai.prism.application.service.InvestigationRunner;
-import io.micrometer.observation.ObservationRegistry;
-import io.micrometer.tracing.Span;
-import io.micrometer.tracing.Tracer;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -45,23 +41,9 @@ class InvestigationConfiguration {
 
     // One virtual thread per background investigation: cheap, and investigations are
     // IO-bound (model + telemetry HTTP calls), so they park rather than burn a platform thread.
-    // Wrapped to capture the originating request's trace id on the submitting thread and carry
-    // it (value only) to the worker, so the investigation's own root span can back-link to it.
     @Bean
-    Executor investigationExecutor(ObjectProvider<Tracer> tracerProvider) {
-        Executor delegate = Executors.newVirtualThreadPerTaskExecutor();
-        return task -> {
-            String requestTraceId = currentTraceId(tracerProvider.getIfAvailable());
-            delegate.execute(() -> RequestTrace.runWith(requestTraceId, task));
-        };
-    }
-
-    private static String currentTraceId(Tracer tracer) {
-        if (tracer == null) {
-            return null;
-        }
-        Span span = tracer.currentSpan();
-        return span != null ? span.context().traceId() : null;
+    Executor investigationExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Bean
@@ -73,11 +55,11 @@ class InvestigationConfiguration {
                                             InvestigationRepository repository,
                                             Clock clock,
                                             @Value("${prism.investigation.max-steps}") int maxSteps,
-                                            ObservationRegistry observationRegistry) {
+                                            OpenTelemetry openTelemetry) {
         InvestigationLoop loop = new InvestigationLoop(
                 reasoningPort, metricsPort, logsPort, tracingPort, memory, repository, clock, maxSteps);
         InvestigationRunner remembering = new RememberingInvestigationRunner(loop, memory);
-        return new ObservedInvestigationRunner(remembering, observationRegistry);
+        return new ObservedInvestigationRunner(remembering, openTelemetry);
     }
 
     @Bean
