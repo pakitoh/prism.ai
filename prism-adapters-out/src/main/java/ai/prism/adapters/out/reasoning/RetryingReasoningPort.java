@@ -92,7 +92,11 @@ public class RetryingReasoningPort implements ReasoningPort {
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             Delegate delegate = delegates.get(attempt % delegates.size());
             try {
-                return delegate.port().nextStep(context);
+                ReasoningStep step = delegate.port().nextStep(context);
+                // Record which model actually answered on the surrounding prism.reasoning.step
+                // span (made current by ObservedReasoningPort) — the model is only known here.
+                io.opentelemetry.api.trace.Span.current().setAttribute("model.id", delegate.modelId());
+                return step;
             } catch (RuntimeException failure) {
                 lastFailure = failure;
                 lastModelId = delegate.modelId();

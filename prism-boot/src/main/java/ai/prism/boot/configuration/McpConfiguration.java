@@ -5,7 +5,6 @@ import ai.prism.adapters.in.mcp.McpApiKeyFilter;
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
 import ai.prism.application.port.out.DashboardLinkPort;
-import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,9 +22,8 @@ class McpConfiguration {
     @Bean
     InvestigationMcpTools investigationMcpTools(InvestigationCommandsUseCase commands,
                                                 InvestigationQueriesUseCase queries,
-                                                DashboardLinkPort dashboardLinks,
-                                                ObservationRegistry observationRegistry) {
-        return new InvestigationMcpTools(commands, queries, dashboardLinks, observationRegistry);
+                                                DashboardLinkPort dashboardLinks) {
+        return new InvestigationMcpTools(commands, queries, dashboardLinks);
     }
 
     // The MCP server autoconfig converts ToolCallbackProvider beans into MCP tools.

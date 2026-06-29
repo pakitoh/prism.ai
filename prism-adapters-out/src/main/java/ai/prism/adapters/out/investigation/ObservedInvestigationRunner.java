@@ -5,7 +5,11 @@ import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationStatus;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
@@ -25,25 +29,39 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ObservedInvestigationRunner.class);
 
+    private static final AttributeKey<String> SOURCE = AttributeKey.stringKey("source");
+    private static final AttributeKey<String> OUTCOME = AttributeKey.stringKey("outcome");
+
     private final InvestigationRunner delegate;
     private final Tracer tracer;
+    private final LongHistogram duration;
 
     public ObservedInvestigationRunner(InvestigationRunner delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.investigation");
+        this.duration = openTelemetry.getMeter("ai.prism.investigation")
+                .histogramBuilder("prism.investigation.duration").ofLongs().setUnit("ms").build();
     }
 
     @Override
     public Investigation run(Investigation investigation) {
-        Span span = tracer.spanBuilder("prism.investigation")
-                .setAttribute("source", investigation.request().source().name())
-                .startSpan();
+        String source = investigation.request().source().name();
+        SpanBuilder builder = tracer.spanBuilder("prism.investigation").setAttribute("source", source);
+        // Link this (separate, root) investigation trace back to the request trace that started it.
+        RequestSpanContext.current().ifPresent(requestContext -> {
+            builder.addLink(requestContext);
+            builder.setAttribute("request.trace_id", requestContext.getTraceId());
+        });
+        Span span = builder.startSpan();
+        long start = System.nanoTime();
+        String outcome = "ERROR";
         try (Scope ignored = span.makeCurrent()) {
             log.info("Investigation started: service={} query=\"{}\"",
                     investigation.request().service().orElse("-"), investigation.request().query());
             Investigation result = delegate.run(investigation);
-            span.setAttribute("outcome", result.status().name());
+            outcome = result.status().name();
+            span.setAttribute("outcome", outcome);
             span.setAttribute("investigation.id", result.id().toString());
             span.setAttribute("signals.gathered", result.signals().size());
             logOutcome(result);
@@ -52,6 +70,8 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
             span.setStatus(StatusCode.ERROR, failure.getMessage() != null ? failure.getMessage() : failure.toString());
             throw failure;
         } finally {
+            duration.record((System.nanoTime() - start) / 1_000_000L,
+                    Attributes.of(SOURCE, source, OUTCOME, outcome));
             span.end();
         }
     }

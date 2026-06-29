@@ -16,6 +16,9 @@ import ai.prism.domain.reasoning.SearchPastInvestigations;
 import ai.prism.domain.reasoning.SearchTraces;
 import ai.prism.domain.investigation.TimeWindow;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -34,27 +37,36 @@ public class ObservedReasoningPort implements ReasoningPort {
 
     private static final Logger log = LoggerFactory.getLogger(ObservedReasoningPort.class);
 
+    private static final AttributeKey<String> STEP_KIND = AttributeKey.stringKey("step.kind");
+
     private final ReasoningPort delegate;
     private final Tracer tracer;
+    private final LongHistogram duration;
 
     public ObservedReasoningPort(ReasoningPort delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.reasoning");
+        this.duration = openTelemetry.getMeter("ai.prism.reasoning")
+                .histogramBuilder("prism.reasoning.step.duration").ofLongs().setUnit("ms").build();
     }
 
     @Override
     public ReasoningStep nextStep(InvestigationContext context) {
         Span span = tracer.spanBuilder("prism.reasoning.step").startSpan();
+        long start = System.nanoTime();
+        String kind = "error";
         try (Scope ignored = span.makeCurrent()) {
             ReasoningStep step = delegate.nextStep(context);
-            span.setAttribute("step.kind", kindOf(step));
+            kind = kindOf(step);
+            span.setAttribute("step.kind", kind);
             log.debug("Next tool: {}", describe(step));
             return step;
         } catch (RuntimeException failure) {
             span.setStatus(StatusCode.ERROR, failure.getMessage() != null ? failure.getMessage() : failure.toString());
             throw failure;
         } finally {
+            duration.record((System.nanoTime() - start) / 1_000_000L, Attributes.of(STEP_KIND, kind));
             span.end();
         }
     }

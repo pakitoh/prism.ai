@@ -2,6 +2,7 @@ package ai.prism.boot.configuration;
 
 import ai.prism.adapters.out.investigation.RememberingInvestigationRunner;
 import ai.prism.adapters.out.investigation.ObservedInvestigationRunner;
+import ai.prism.adapters.out.investigation.RequestSpanContext;
 import ai.prism.adapters.out.persistence.PostgresInvestigationRepository;
 import ai.prism.application.port.in.InvestigationCommandsUseCase;
 import ai.prism.application.port.in.InvestigationQueriesUseCase;
@@ -16,6 +17,7 @@ import ai.prism.application.service.InvestigationLoop;
 import ai.prism.application.service.InvestigationQueriesService;
 import ai.prism.application.service.InvestigationRunner;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
 import java.time.Clock;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -41,9 +43,15 @@ class InvestigationConfiguration {
 
     // One virtual thread per background investigation: cheap, and investigations are
     // IO-bound (model + telemetry HTTP calls), so they park rather than burn a platform thread.
+    // Wrapped to capture the originating request's span context on the submitting thread and carry
+    // it to the worker, so the investigation's own root trace can link back to the request trace.
     @Bean
     Executor investigationExecutor() {
-        return Executors.newVirtualThreadPerTaskExecutor();
+        Executor delegate = Executors.newVirtualThreadPerTaskExecutor();
+        return task -> {
+            var requestContext = Span.current().getSpanContext();
+            delegate.execute(() -> RequestSpanContext.runWith(requestContext, task));
+        };
     }
 
     @Bean

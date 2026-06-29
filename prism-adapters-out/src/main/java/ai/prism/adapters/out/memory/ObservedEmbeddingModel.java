@@ -1,6 +1,7 @@
 package ai.prism.adapters.out.memory;
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -34,11 +35,14 @@ public class ObservedEmbeddingModel implements EmbeddingModel {
 
     private final EmbeddingModel delegate;
     private final Tracer tracer;
+    private final LongHistogram duration;
 
     public ObservedEmbeddingModel(EmbeddingModel delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.embedding");
+        this.duration = openTelemetry.getMeter("ai.prism.embedding")
+                .histogramBuilder("prism.embedding.duration").ofLongs().setUnit("ms").build();
     }
 
     @Override
@@ -76,6 +80,7 @@ public class ObservedEmbeddingModel implements EmbeddingModel {
                     inputs, millisSince(start), failure.toString());
             throw failure;
         } finally {
+            duration.record(millisSince(start));
             span.end();
         }
     }

@@ -11,13 +11,15 @@ import ai.prism.domain.investigation.InvestigationStatus;
 import ai.prism.domain.investigation.RequestSource;
 import ai.prism.domain.investigation.Signal;
 import ai.prism.domain.investigation.TimeWindow;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import io.opentelemetry.api.trace.Span;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -29,19 +31,19 @@ import org.springframework.ai.tool.annotation.ToolParam;
  */
 public class InvestigationMcpTools {
 
+    private static final Logger log = LoggerFactory.getLogger(InvestigationMcpTools.class);
+
     private static final int DEFAULT_RECENT_LIMIT = 20;
 
     private final InvestigationCommandsUseCase commands;
     private final InvestigationQueriesUseCase queries;
     private final DashboardLinkPort dashboardLinks;
-    private final ObservationRegistry observationRegistry;
 
     public InvestigationMcpTools(InvestigationCommandsUseCase commands, InvestigationQueriesUseCase queries,
-                                 DashboardLinkPort dashboardLinks, ObservationRegistry observationRegistry) {
+                                 DashboardLinkPort dashboardLinks) {
         this.commands = Objects.requireNonNull(commands, "commands must not be null");
         this.queries = Objects.requireNonNull(queries, "queries must not be null");
         this.dashboardLinks = Objects.requireNonNull(dashboardLinks, "dashboardLinks must not be null");
-        this.observationRegistry = Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
     }
 
     @Tool(name = "investigate", description = """
@@ -58,10 +60,10 @@ public class InvestigationMcpTools {
                 window(from, to),
                 RequestSource.MANUAL);
         InvestigationId id = commands.submit(request);
-        Observation current = observationRegistry.getCurrentObservation();
-        if (current != null) {
-            current.highCardinalityKeyValue("investigation.id", id.toString());
-        }
+        log.debug("MCP tool 'investigate' started: id={} query=\"{}\"", id, query);
+        // Stamp the spawned id on the current request span so the MCP request trace links to the
+        // (async) investigation trace (queryable by investigation.id, which both spans carry).
+        Span.current().setAttribute("investigation.id", id.toString());
         return new AcceptedInvestigation(id.toString(), InvestigationStatus.PENDING.name());
     }
 

@@ -1,6 +1,9 @@
 package ai.prism.adapters.out.http;
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
@@ -23,13 +26,18 @@ public class ObservedHttpExecutor implements HttpExecutor {
 
     private static final int PREVIEW_LIMIT = 1000;
 
+    private static final AttributeKey<String> BACKEND = AttributeKey.stringKey("backend");
+
     private final HttpExecutor delegate;
     private final Tracer tracer;
+    private final LongHistogram duration;
 
     public ObservedHttpExecutor(HttpExecutor delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.telemetry");
+        this.duration = openTelemetry.getMeter("ai.prism.telemetry")
+                .histogramBuilder("prism.telemetry.query.duration").ofLongs().setUnit("ms").build();
     }
 
     @Override
@@ -39,6 +47,7 @@ public class ObservedHttpExecutor implements HttpExecutor {
                 .setAttribute("backend", backend)
                 .setAttribute("uri", uri.toString())
                 .startSpan();
+        long start = System.nanoTime();
         log.debug("Telemetry {} query: {}", backend, uri);
         try (Scope ignored = span.makeCurrent()) {
             String body = delegate.get(uri);
@@ -53,6 +62,7 @@ public class ObservedHttpExecutor implements HttpExecutor {
             log.warn("Telemetry {} query failed: {} -> {}", backend, uri, failure.getMessage());
             throw failure;
         } finally {
+            duration.record((System.nanoTime() - start) / 1_000_000L, Attributes.of(BACKEND, backend));
             span.end();
         }
     }
