@@ -39,7 +39,7 @@ An AI-powered observability investigation assistant. Feed it a metric anomaly, a
 - **Signal correlation** — autonomously chains metric → log → trace queries rather than forcing you to pivot between tools manually
 - **Clickable evidence** — every gathered signal carries a Grafana Explore deep link, and the finding nominates a headline link to the key signal, so you can jump straight from the conclusion to the data
 - **Growing memory** — past investigations are embedded in pgvector; recurring failure patterns surface their own history
-- **Alert-driven (Phase 3)** — Alertmanager fires a Kafka event; prism.ai picks it up, investigates, and delivers a report
+- **Alert-driven (Phase 3)** — an alert fires and POSTs its webhook to prism.ai (`/alerts`, Alertmanager format — Prometheus Alertmanager or Grafana alerting); prism.ai investigates each firing alert and delivers a report
 - **Remote MCP server (Phase 4)** — runs in the cloud with access to the company stack; developers connect Claude Code or Claude Desktop from their laptops and investigate in natural language
 
 ## 🤖 AI Design
@@ -79,7 +79,7 @@ To keep the model from guessing datasource conventions, each investigation is **
 
 ### Asynchronous execution
 
-That loop can take many model + telemetry round-trips, so it never runs on the request thread. The inbound side is split **command/query (CQRS)**: a command port submits work, a query port reads results. `submit` persists the investigation as `PENDING`, schedules the loop on a virtual-thread worker, and returns an id immediately (`202 Accepted`); clients poll the query port for status and result. The same two ports are what the Kafka consumer (Phase 3) and MCP server (Phase 4) drive — in-process, never over HTTP.
+That loop can take many model + telemetry round-trips, so it never runs on the request thread. The inbound side is split **command/query (CQRS)**: a command port submits work, a query port reads results. `submit` persists the investigation as `PENDING`, schedules the loop on a virtual-thread worker, and returns an id immediately (`202 Accepted`); clients poll the query port for status and result. The same two ports are what the alert webhook (Phase 3) and MCP server (Phase 4) drive — in-process, never over HTTP.
 
 ```
  POST /investigations ──▶ InvestigationCommandsUseCase.submit
@@ -153,7 +153,7 @@ Services after startup:
 | Observability APIs | Prometheus HTTP · Loki HTTP · Tempo HTTP |
 | LLM | Google Gemini (default) + Groq cross-provider fallback · retry with model rotation · provider/model configurable |
 | Vector memory | PostgreSQL + pgvector |
-| Event bus | Kafka (KRaft) + Schema Registry |
+| Alert ingestion | Alertmanager-format webhook (`POST /alerts`) — Prometheus Alertmanager or Grafana alerting |
 | MCP interface | MCP Java SDK — Streamable HTTP transport |
 | Application | Java 25 · Maven · Spring Boot 4 |
 | Self-observability | OpenTelemetry (traces + logs) · Micrometer metrics · OTLP → its own Tempo · Prometheus · Loki |
@@ -164,7 +164,7 @@ Services after startup:
 
 ```
 prism-domain/          Domain model — pure Java, zero framework deps
-prism-adapters-in/     Inbound adapters: REST, MCP server, Kafka consumer
+prism-adapters-in/     Inbound adapters: REST, MCP server, alert webhook
 prism-adapters-out/    Outbound adapters: model reasoning, Prometheus, Loki, Tempo, Postgres, pgvector
 prism-boot/            Spring Boot wiring and configuration
 ```
@@ -175,10 +175,10 @@ See [PLAN.md](PLAN.md) for implementation phases.
 ---
 ### Architecture
 
-Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, Kafka, or the model — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
+Hexagonal architecture with a clean domain core. The investigation domain has no knowledge of Prometheus, the alert webhook, or the model — it only knows about signals, findings, and investigations. Adapters translate between the domain's port interfaces and external systems.
 
 ```
-  REST / MCP server (Streamable HTTP) / Kafka
+  REST / MCP server (Streamable HTTP) / alert webhook
                │
         [Inbound Adapters]
                │

@@ -93,11 +93,23 @@ The reasoning step set gains `SearchPastInvestigations` + the `search_past_inves
 
 ## Phase 3 — Autonomous Alert-Driven Investigation
 
-**Goal:** Alertmanager fires → Kafka event published → prism.ai investigates and delivers a report automatically.
+**Goal:** an alert fires → prism.ai is notified over HTTP → it investigates and delivers a report automatically.
 
-### 3.1 Kafka consumer (inbound adapter)
+### 3.1 Alert webhook (inbound adapter) — done
 
-`AlertConsumer` listens to `prism.alerts` topic. Deserializes an `AlertEvent` (Avro schema in Schema Registry), constructs an `InvestigationRequest`, and submits it to the application use case.
+`AlertWebhookController` exposes `POST /alerts`, accepting the Alertmanager-format webhook (Prometheus
+Alertmanager, or Grafana's built-in alerting via a webhook contact point). It maps each *firing* alert to
+an `InvestigationRequest` (`RequestSource.ALERT`) — alertname + summary as the query, the `service`/`job`
+label as scope, `startsAt`/`endsAt` as the window — and submits it through the same async
+`InvestigationCommandsUseCase.submit` that REST and MCP drive (`AlertMapper`); resolved alerts are skipped.
+So the loop, tracing (the investigation trace links back to the `POST /alerts` request span) and memory all
+apply unchanged. The endpoint is guarded by an optional shared-secret `X-API-Key` filter
+(`prism.alerts.api-key`, blank = open for dev), mirroring the MCP key.
+
+Webhook-direct (not Kafka): far less to run, and reuses the REST stack. The trade-off is no durability —
+an alert that fires while prism is down is lost (Alertmanager retries briefly, then drops it); Kafka can be
+re-introduced behind the same `submit` spine later if buffering is needed. Dedup by `fingerprint`
+(Alertmanager re-sends firing alerts on an interval) is a follow-up.
 
 ### 3.2 Async investigation (done)
 
@@ -140,7 +152,7 @@ prism.ai runs in the cloud with direct access to the company's observability sta
 
 ### 4.3 MCP tools adapter (inbound)
 
-`InvestigationMcpTools` in `prism-adapters-in` — `@Tool`-annotated methods exposed as MCP tools by the **Spring AI MCP server (WebMVC) starter** (the servlet variant matching the app's stack), which wraps the MCP Java SDK and provides the Streamable HTTP transport. It depends only on the inbound ports `InvestigationCommandsUseCase` + `InvestigationQueriesUseCase` — the same spine REST and the Kafka consumer use — and translates only, no business logic. Registered at the composition root as a `ToolCallbackProvider` bean (`McpConfiguration`).
+`InvestigationMcpTools` in `prism-adapters-in` — `@Tool`-annotated methods exposed as MCP tools by the **Spring AI MCP server (WebMVC) starter** (the servlet variant matching the app's stack), which wraps the MCP Java SDK and provides the Streamable HTTP transport. It depends only on the inbound ports `InvestigationCommandsUseCase` + `InvestigationQueriesUseCase` — the same spine REST and the alert webhook use — and translates only, no business logic. Registered at the composition root as a `ToolCallbackProvider` bean (`McpConfiguration`).
 
 Tools exposed (mapped to the ports), returning 2025-06-18 **structured output** (`outputSchema` / `structuredContent`):
 

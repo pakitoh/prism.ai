@@ -51,7 +51,10 @@ spring:
 prism:
   mcp:
     # When set, the MCP endpoint (/mcp) requires a matching X-API-Key header; blank = open (dev).
-    api-key: ${PRISM_MCP_API_KEY:secret}
+    api-key: ${PRISM_MCP_API_KEY:}
+  alerts:
+    # When set, the alert webhook (/alerts) requires a matching X-API-Key header; blank = open (dev).
+    api-key: ${PRISM_ALERTS_API_KEY:}
   knowledge:
     # 'pgvector' = semantic recall via the native Gemini EmbeddingModel + pgvector;
     # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev — set
