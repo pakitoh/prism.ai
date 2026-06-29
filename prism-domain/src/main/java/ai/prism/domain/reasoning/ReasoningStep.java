@@ -11,6 +11,6 @@ package ai.prism.domain.reasoning;
  */
 public sealed interface ReasoningStep
         permits QueryMetrics, SearchLogs, GetTrace, SearchTraces,
-                ListLogLabels, ListLogLabelValues, ListMetricNames, ListTraceTags, ListTraceTagValues,
+                ListLogLabelValues, ListTraceTagValues,
                 SearchPastInvestigations, Conclusion {
 }

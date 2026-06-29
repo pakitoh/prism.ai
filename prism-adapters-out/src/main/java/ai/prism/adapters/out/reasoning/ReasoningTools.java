@@ -33,10 +33,6 @@ final class ReasoningTools {
     record ListTraceTagValuesInput(String tag) {
     }
 
-    /** Input type for tools that take no arguments (yields an empty object schema). */
-    record NoArgs() {
-    }
-
     record SearchPastInvestigationsInput(String query) {
     }
 
@@ -71,31 +67,18 @@ final class ReasoningTools {
                         "Search Tempo for traces matching a TraceQL query over the given time window. "
                                 + "TraceQL selects spans by attribute, e.g. "
                                 + "{ resource.service.name = \"checkout\" } or "
-                                + "{ resource.service.name = \"checkout\" && status = error }. Discover "
-                                + "attribute names first with list_trace_tags. Use to find an exemplar "
+                                + "{ resource.service.name = \"checkout\" && status = error }. Use the trace "
+                                + "tag names from the seeded trace-tag schema (a service is "
+                                + "'resource.service.name', not bare 'service.name'). Use to find an exemplar "
                                 + "trace for a symptom.",
                         SearchTracesInput.class),
-                tool(ReasoningToolNames.LIST_LOG_LABELS,
-                        "List the available Loki log label names. Use this BEFORE search_logs to discover "
-                                + "how streams are labelled rather than assuming a label name. Takes no arguments.",
-                        NoArgs.class),
                 tool(ReasoningToolNames.LIST_LOG_LABEL_VALUES,
                         "List the values of one Loki log label (e.g. which services exist). Pass the label "
-                                + "name exactly as returned by list_log_labels.",
+                                + "name exactly as shown in the seeded log-label schema.",
                         ListLogLabelValuesInput.class),
-                tool(ReasoningToolNames.LIST_METRIC_NAMES,
-                        "List the available Prometheus metric names. Use this BEFORE query_metrics to "
-                                + "confirm a metric exists rather than assuming one. Takes no arguments.",
-                        NoArgs.class),
-                tool(ReasoningToolNames.LIST_TRACE_TAGS,
-                        "List the available Tempo trace tags, grouped by scope (resource, span, intrinsic). "
-                                + "Use this BEFORE search_traces to find the correct attribute name and scope "
-                                + "— e.g. a service is 'resource.service.name', not bare 'service.name'. "
-                                + "Takes no arguments.",
-                        NoArgs.class),
                 tool(ReasoningToolNames.LIST_TRACE_TAG_VALUES,
-                        "List the values of one Tempo trace tag. Pass the scoped tag name exactly as "
-                                + "returned by list_trace_tags (e.g. 'resource.service.name').",
+                        "List the values of one Tempo trace tag. Pass the scoped tag name exactly as shown "
+                                + "in the seeded trace-tag schema (e.g. 'resource.service.name').",
                         ListTraceTagValuesInput.class),
                 tool(ReasoningToolNames.SEARCH_PAST_INVESTIGATIONS,
                         "Recall past investigations similar to the query. Use early to check whether "

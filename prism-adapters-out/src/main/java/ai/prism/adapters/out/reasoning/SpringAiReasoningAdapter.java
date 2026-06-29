@@ -41,18 +41,19 @@ public class SpringAiReasoningAdapter implements ReasoningPort {
             You MUST respond by calling exactly one tool:
               - search_past_investigations to recall whether this symptom was seen and resolved before
               - query_metrics / search_logs / get_trace / search_traces to gather more evidence
-              - list_metric_names / list_log_labels / list_log_label_values / list_trace_tags /
-                list_trace_tag_values to discover the schema before querying
+              - list_log_label_values / list_trace_tag_values to discover a label's or tag's values
+                before querying (the label/metric/tag NAMES are already in the seeded schema below)
               - conclude once the evidence supports a root cause
 
             Work like an SRE: start from the symptom, correlate across metrics, logs and
             traces, and narrow to the failing component. Time arguments (from/to) are
             ISO-8601 UTC instants. Do not ask the user questions; gather evidence and conclude.
 
-            Do not assume label, metric or tag names — they vary by stack. When unsure, discover
-            them first with the list_* tools, then query. An empty result usually means the name
-            was wrong, not that the service is absent: verify the name before inferring anything is
-            down, and never conclude an outage from empty results alone.
+            Do not assume label, metric or tag names — they vary by stack. The real names are in the
+            seeded schema below; use them rather than guessing, and use list_log_label_values /
+            list_trace_tag_values to discover a label's or tag's values before querying. An empty result
+            usually means the value was wrong, not that the service is absent: verify it before inferring
+            anything is down, and never conclude an outage from empty results alone.
 
             The telemetry schema and every result you have gathered are listed below. Never repeat
             a query or discovery you have already run — reuse what is already there. Conclude as

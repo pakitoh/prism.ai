@@ -10,10 +10,7 @@ import ai.prism.application.port.out.TelemetryException;
 import ai.prism.application.port.out.TracingPort;
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
-import ai.prism.domain.reasoning.ListLogLabels;
 import ai.prism.domain.reasoning.ListLogLabelValues;
-import ai.prism.domain.reasoning.ListMetricNames;
-import ai.prism.domain.reasoning.ListTraceTags;
 import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.ReasoningStep;
@@ -106,14 +103,8 @@ public class InvestigationLoop implements InvestigationRunner {
                         () -> tracingPort.getTrace(t.traceId()));
                 case SearchTraces s -> dispatch(investigation, SignalType.TRACE, s.traceQl(),
                         () -> tracingPort.searchTraces(s.traceQl(), s.window()));
-                case ListLogLabels l -> dispatch(investigation, SignalType.SCHEMA, "log labels",
-                        logsPort::listLabelNames);
                 case ListLogLabelValues v -> dispatch(investigation, SignalType.SCHEMA,
                         "log label values: " + v.label(), () -> logsPort.listLabelValues(v.label()));
-                case ListMetricNames m -> dispatch(investigation, SignalType.SCHEMA, "metric names",
-                        metricsPort::listMetricNames);
-                case ListTraceTags t -> dispatch(investigation, SignalType.SCHEMA, "trace tags",
-                        tracingPort::listTagNames);
                 case ListTraceTagValues v -> dispatch(investigation, SignalType.SCHEMA,
                         "trace tag values: " + v.tag(), () -> tracingPort.listTagValues(v.tag()));
                 case SearchPastInvestigations p -> investigation.recordSignal(knowledgeBase.findSimilar(p.query()));

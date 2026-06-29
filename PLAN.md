@@ -38,10 +38,10 @@ The investigation loop lives in `InvestigationLoop` (application layer), not in
 any adapter. It seeds the telemetry schema up front, then drives the steps,
 dispatches tool requests to the telemetry ports, records signals, and stops on a
 conclusion or the `maxSteps` bound. The `ReasoningStep` sealed type (`QueryMetrics |
-SearchLogs | GetTrace | SearchTraces | ListLogLabels | ListLogLabelValues |
-ListMetricNames | ListTraceTags | ListTraceTagValues | SearchPastInvestigations |
-Conclusion`, in `ai.prism.domain.reasoning`) is the model-agnostic vocabulary
-crossing the `ReasoningPort` boundary.
+SearchLogs | GetTrace | SearchTraces | ListLogLabelValues | ListTraceTagValues |
+SearchPastInvestigations | Conclusion`, in `ai.prism.domain.reasoning`) is the
+model-agnostic vocabulary crossing the `ReasoningPort` boundary. Schema *names* are
+seeded up front, so only the on-demand *value* lookups remain as discovery steps.
 
 ### 1.4 Adapters
 

@@ -58,24 +58,26 @@ The loop itself is core business logic and lives in the application layer, not i
 InvestigationRequest  (alert · free-text query · metric anomaly)
          │
          ▼
-    next step? ◀─────────────────────────┐   (model decides one step)
-         │                               │
-         ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
-         ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
-         ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
-         ├─ SearchTraces(TraceQL, win)   → Tempo HTTP API ───────┤
-         ├─ List{Log,Metric,Trace}…      → schema discovery ─────┤ record Signal
-         ├─ SearchPastInvestigations(q)  → pgvector memory ──────┘   then loop
-         │                               │
-         └─ Conclusion ─────────────────────────────────────────▶ done
-         │
-         ▼
+    model decides next step 
+      ▲ │
+      │ ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
+      │ ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
+      │ ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
+      │ ├─ SearchTraces(TraceQL, win)   → Tempo HTTP API ───────┤
+      │ ├─ List{Log,Trace}…Values       → schema value lookup ──┼─┐
+      │ └─ SearchPastInvestigations(q)  → pgvector memory ──────┘ │   
+      │      │                                   record Signal ◀──┘
+      │      └──────▶ Conclusion?
+      │                    │
+      └ No, then loop ◀────┴────▶  Yes 
+                                    │ done
+                                    ▼
     Finding  (root cause · supporting evidence · recommended action)
 ```
 
 A typical investigation: detect an error-rate spike → pull correlated logs → find an exemplar trace → identify the failing span and dependency. No manual pivoting between dashboards. A step limit guarantees the loop always terminates.
 
-To keep the model from guessing datasource conventions, each investigation is **seeded** up front with the live schema — Loki log labels, Prometheus metric names, Tempo trace tags — so it queries `service_name` rather than a hallucinated `service`. The model can also discover labels/values on demand via the `list_*` tools.
+To keep the model from guessing datasource conventions, each investigation is **seeded** up front with the live schema — Loki log labels, Prometheus metric names, Tempo trace tags — so it queries `service_name` rather than a hallucinated `service`. Those names come from the seed only; the model can still look up a chosen label's or tag's *values* on demand (`list_log_label_values` / `list_trace_tag_values`) — e.g. which services exist — since enumerating every value up front would be too much.
 
 ### Asynchronous execution
 

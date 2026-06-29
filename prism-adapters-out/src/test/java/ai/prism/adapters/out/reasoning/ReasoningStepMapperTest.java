@@ -5,10 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.prism.domain.reasoning.Conclusion;
 import ai.prism.domain.reasoning.GetTrace;
-import ai.prism.domain.reasoning.ListLogLabels;
 import ai.prism.domain.reasoning.ListLogLabelValues;
-import ai.prism.domain.reasoning.ListMetricNames;
-import ai.prism.domain.reasoning.ListTraceTags;
 import ai.prism.domain.reasoning.ListTraceTagValues;
 import ai.prism.domain.reasoning.QueryMetrics;
 import ai.prism.domain.reasoning.SearchLogs;
@@ -66,13 +63,7 @@ class ReasoningStepMapperTest {
     }
 
     @Test
-    void mapsSchemaDiscoverySteps() {
-        assertThat(mapper.map(ReasoningToolNames.LIST_LOG_LABELS, Map.of()))
-                .isInstanceOf(ListLogLabels.class);
-        assertThat(mapper.map(ReasoningToolNames.LIST_METRIC_NAMES, Map.of()))
-                .isInstanceOf(ListMetricNames.class);
-        assertThat(mapper.map(ReasoningToolNames.LIST_TRACE_TAGS, Map.of()))
-                .isInstanceOf(ListTraceTags.class);
+    void mapsSchemaValueDiscoverySteps() {
         assertThat(mapper.map(ReasoningToolNames.LIST_LOG_LABEL_VALUES, Map.of("label", "service_name")))
                 .isInstanceOfSatisfying(ListLogLabelValues.class, v -> assertThat(v.label()).isEqualTo("service_name"));
         assertThat(mapper.map(ReasoningToolNames.LIST_TRACE_TAG_VALUES, Map.of("tag", "resource.service.name")))
