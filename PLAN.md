@@ -2,7 +2,7 @@
 
 ## Phase 0 — Infrastructure (done)
 
-Docker Compose stack is live: Prometheus, Loki, Tempo, Grafana, OpenTelemetry Collector, PostgreSQL+pgvector, Kafka, Schema Registry.
+Docker Compose stack is live: Prometheus, Loki, Tempo, Grafana, OpenTelemetry Collector, PostgreSQL+pgvector.
 
 ---
 

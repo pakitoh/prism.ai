@@ -139,8 +139,6 @@ Services after startup:
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
 | Loki | http://localhost:3100 |
-| Kafka UI | http://localhost:8080 |
-| Schema Registry | http://localhost:8081 |
 | OTLP (gRPC) | localhost:4317 |
 | OTLP (HTTP) | localhost:4318 |
 
