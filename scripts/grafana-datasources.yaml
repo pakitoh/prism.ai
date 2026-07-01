@@ -5,13 +5,13 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
-    uid: prometheus                    # Explicit, stable UID — matches prism.grafana.prometheus-uid
+    uid: prometheus                    # Explicit stable UID
     isDefault: true
   - name: Tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
-    uid: tempo                         # Explicit UID used by Loki's derivedFields
+    uid: tempo                         # Explicit stable UID
     jsonData:
       tracesToLogsV2:
         datasourceUid: loki            # Target data source name or UID
@@ -26,7 +26,7 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
-    uid: loki                          # Explicit, stable UID — matches prism.grafana.loki-uid
+    uid: loki                          # Explicit stable UID
     jsonData:
       derivedFields:
         # For app logs that embed the id in the line (e.g. JSON logs with a "trace_id" field).
@@ -35,7 +35,7 @@ datasources:
           matcherRegex: '"trace_id":\s*"\s*([a-fA-F0-9]{32})\s*"' # Matches trace_id=xyz or traceID=xyz
           url: '$${__value.raw}'       # Note the double $$ to escape Docker/Grafana variables
           internal: true
-        # For OTLP-ingested logs (e.g. prism.ai itself): the trace id arrives as a `trace_id`
+        # For OTLP-ingested logs (e.g. an OTLP-instrumented service): the trace id arrives as a `trace_id`
         # stream label, not in the line — so match the label by name. A DISTINCT field name is
         # required: a second derived field sharing "TraceID" gets shadowed and never links.
         - datasourceUid: tempo

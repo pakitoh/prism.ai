@@ -1,5 +1,6 @@
 package ai.prism.boot.configuration;
 
+import ai.prism.adapters.out.reasoning.ObservedChatModel;
 import ai.prism.adapters.out.reasoning.ObservedReasoningPort;
 import ai.prism.adapters.out.reasoning.RetryingReasoningPort;
 import ai.prism.adapters.out.reasoning.SpringAiReasoningAdapter;
@@ -8,6 +9,7 @@ import ai.prism.boot.ReasoningProperties;
 import com.openai.client.OpenAIClient;
 import com.openai.credential.BearerTokenCredential;
 import io.micrometer.observation.ObservationRegistry;
+import org.springframework.beans.factory.annotation.Value;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -51,7 +53,8 @@ class ReasoningConfiguration {
     ReasoningPort reasoningPort(JsonMapper jsonMapper,
                                 ReasoningProperties properties,
                                 ObservationRegistry observationRegistry,
-                                io.opentelemetry.api.OpenTelemetry openTelemetry) {
+                                io.opentelemetry.api.OpenTelemetry openTelemetry,
+                                @Value("${prism.langfuse.capture-io:true}") boolean captureIo) {
         List<ReasoningProperties.ModelConfig> models = properties.models();
         if (models == null || models.isEmpty()) {
             throw new IllegalArgumentException("No models configured!!");
@@ -63,7 +66,11 @@ class ReasoningConfiguration {
                 .map(config -> new RetryingReasoningPort.Delegate(
                         config.id(),
                         new SpringAiReasoningAdapter(
-                                buildOpenAiCompatibleChatModel(config, observationRegistry),
+                                // Wrap each reasoning model so every LLM call emits a GenAI/token span
+                                // (Langfuse generation) and a token histogram.
+                                new ObservedChatModel(
+                                        buildOpenAiCompatibleChatModel(config, observationRegistry),
+                                        openTelemetry, captureIo),
                                 jsonMapper,
                                 config.id())))
                 .collect(Collectors.toUnmodifiableList());

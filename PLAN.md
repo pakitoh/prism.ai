@@ -182,13 +182,40 @@ These inbound tool DTOs are distinct from the LLM's outbound `ReasoningTools`.
 
 ## Phase 5 — Hardening & Evaluation
 
-### 5.1 Observability of the agent
+### 5.1 Observability of the agent (done — core)
 
-Instrument the investigation loop with Langfuse traces so each tool call, model response, and final conclusion is traceable and scoreable. This is the feedback loop that lets you judge quality before trusting autonomous runs.
+Each investigation is a Langfuse trace and each LLM call a costed *generation*. Wired **collector-side**:
+the app keeps exporting OTLP once to the collector (single telemetry façade), and
+`scripts/otel-collector-config.yaml` fans the traces pipeline out to Langfuse Cloud's OTLP endpoint
+(`otlphttp/langfuse`). The only app change is `ObservedChatModel` (mirrors
+`ObservedEmbeddingModel`): it wraps every reasoning `ChatModel` and emits a `prism.reasoning.llm` span
+carrying the OpenTelemetry **GenAI** attributes (`gen_ai.request.model`, `gen_ai.usage.*`, and — behind
+`prism.langfuse.capture-io` — `gen_ai.prompt`/`gen_ai.completion`) that Langfuse parses; **cost is derived
+by Langfuse** from the model id + token counts, so no pricing table lives in the app. A
+`prism.reasoning.tokens` histogram (by model / input·output) is exported alongside.
 
-### 5.2 Hardening
+**Shared-collector conventions** (so one observability stack serves many projects):
+- **Scope filter** — a dedicated `traces/langfuse` pipeline keeps only `ai.*` instrumentation-scope spans
+  (the agent/GenAI spans) and drops auto-instrumentation noise; any service that names its custom tracers
+  `ai.<project>.*` is covered with no per-project collector change (prism uses `ai.prism.*`).
+- **Per-service credentials** — each service forwards its own Langfuse key as a `langfuse-authorization`
+  OTLP header (`OTEL_EXPORTER_OTLP_HEADERS`), so it lands in its own Langfuse project through the *same*
+  collector; the collector holds **no** Langfuse credentials (a service that forwards none is not exported).
+  The `headers_setter` extension propagates the header, and `batch/langfuse` uses
+  `metadata_keys: [langfuse-authorization]` to bucket batches per credential so the header survives
+  batching. A `routing` connector is only needed if tenants target different Langfuse
+  endpoints.
 
-- Cost tracking per investigation (token counts → Langfuse metadata)
-- Rate limiting on the investigation endpoint
-- Quality evaluation: score past investigations in Langfuse; surface low-confidence conclusions
-- Grafana dashboard for investigation history, p95 time-to-conclusion, tool-call distribution
+### 5.2 Hardening (done — core)
+
+- **Token tracking** per step → the `prism.reasoning.tokens` histogram + the GenAI span attrs above
+  (Langfuse turns these into cost).
+- **Low-confidence surfacing**: `ObservedInvestigationRunner` tags `finding.confidence` /
+  `investigation.low_confidence` on the investigation span, increments a `prism.investigation.concluded`
+  counter (by confidence), and WARN-logs a LOW-confidence conclusion for review.
+- **Grafana dashboard** (`scripts/grafana-dashboard-prism.json` + `grafana-dashboards.yaml` provider):
+  investigations by outcome, p95 time-to-conclusion, tool-call distribution, confidence mix, token usage.
+
+**Deferred (follow-up):**
+- Rate limiting on the investigation / alert POST endpoints.
+- Langfuse LLM-as-judge quality scoring (eval configured in Langfuse over the captured I/O).

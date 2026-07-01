@@ -1,12 +1,14 @@
 package ai.prism.adapters.out.investigation;
 
 import ai.prism.application.service.InvestigationRunner;
+import ai.prism.domain.investigation.Confidence;
 import ai.prism.domain.investigation.Finding;
 import ai.prism.domain.investigation.Investigation;
 import ai.prism.domain.investigation.InvestigationStatus;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
@@ -31,17 +33,21 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
 
     private static final AttributeKey<String> SOURCE = AttributeKey.stringKey("source");
     private static final AttributeKey<String> OUTCOME = AttributeKey.stringKey("outcome");
+    private static final AttributeKey<String> CONFIDENCE = AttributeKey.stringKey("confidence");
 
     private final InvestigationRunner delegate;
     private final Tracer tracer;
     private final LongHistogram duration;
+    private final LongCounter concluded;
 
     public ObservedInvestigationRunner(InvestigationRunner delegate, OpenTelemetry openTelemetry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.investigation");
         this.duration = openTelemetry.getMeter("ai.prism.investigation")
-                .histogramBuilder("prism.investigation.duration").ofLongs().setUnit("ms").build();
+                .histogramBuilder("prism.run.duration").ofLongs().setUnit("ms").build();
+        this.concluded = openTelemetry.getMeter("ai.prism.investigation")
+                .counterBuilder("prism.run.completed").build();
     }
 
     @Override
@@ -64,6 +70,7 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
             span.setAttribute("outcome", outcome);
             span.setAttribute("investigation.id", result.id().toString());
             span.setAttribute("signals.gathered", result.signals().size());
+            recordConfidence(span, result);
             logOutcome(result);
             return result;
         } catch (RuntimeException failure) {
@@ -74,6 +81,27 @@ public class ObservedInvestigationRunner implements InvestigationRunner {
                     Attributes.of(SOURCE, source, OUTCOME, outcome));
             span.end();
         }
+    }
+
+    /**
+     * Surfaces the conclusion's confidence: tagged on the span and a {@code prism.run.completed}
+     * counter (by confidence) for the dashboard's confidence mix, with a WARN on a LOW-confidence
+     * conclusion so it stands out for human review.
+     */
+    private void recordConfidence(Span span, Investigation investigation) {
+        if (investigation.status() != InvestigationStatus.CONCLUDED) {
+            return;
+        }
+        investigation.finding().ifPresent(finding -> {
+            Confidence confidence = finding.confidence();
+            span.setAttribute("finding.confidence", confidence.name());
+            if (confidence == Confidence.LOW) {
+                span.setAttribute("investigation.low_confidence", true);
+                log.warn("Investigation {} concluded with LOW confidence — review: {}",
+                        investigation.id(), finding.rootCause());
+            }
+            concluded.add(1, Attributes.of(CONFIDENCE, confidence.name()));
+        });
     }
 
     private static void logOutcome(Investigation investigation) {

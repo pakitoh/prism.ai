@@ -55,6 +55,11 @@ prism:
   alerts:
     # When set, the alert webhook (/alerts) requires a matching X-API-Key header; blank = open (dev).
     api-key: ${PRISM_ALERTS_API_KEY:}
+  langfuse:
+    # Record each reasoning step's prompt + chosen tool call on the LLM span (gen_ai.prompt /
+    # gen_ai.completion) so Langfuse shows the generation I/O. Set false if prompts may carry
+    # sensitive data. Token usage + cost are captured regardless.
+    capture-io: ${PRISM_LANGFUSE_CAPTURE_IO:true}
   knowledge:
     # 'pgvector' = semantic recall via the native Gemini EmbeddingModel + pgvector;
     # 'memory' = in-process token-overlap (no DB/embeddings, good for local dev — set

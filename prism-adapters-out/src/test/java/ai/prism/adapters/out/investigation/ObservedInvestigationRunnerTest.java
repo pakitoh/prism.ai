@@ -28,6 +28,18 @@ class ObservedInvestigationRunnerTest {
     }
 
     @Test
+    void surfacesLowConfidenceYetStaysTransparent() {
+        Investigation concluded = Investigation.open(InvestigationRequest.manual("why errors?"));
+        concluded.start();
+        concluded.conclude(Finding.of("maybe DNS", "weak evidence", "check DNS", Confidence.LOW));
+
+        InvestigationRunner runner = new ObservedInvestigationRunner(investigation -> concluded, openTelemetry);
+
+        // The decorator records the LOW-confidence flag/metric but does not alter the result.
+        assertThat(runner.run(Investigation.open(InvestigationRequest.manual("why errors?")))).isSameAs(concluded);
+    }
+
+    @Test
     void propagatesAndEndsTheSpanWhenTheRunThrows() {
         InvestigationRunner failing = investigation -> {
             throw new IllegalStateException("boom");

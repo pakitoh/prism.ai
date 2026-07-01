@@ -45,7 +45,7 @@ public class ObservedReasoningPort implements ReasoningPort {
         Objects.requireNonNull(openTelemetry, "openTelemetry must not be null");
         this.tracer = openTelemetry.getTracer("ai.prism.reasoning");
         this.duration = openTelemetry.getMeter("ai.prism.reasoning")
-                .histogramBuilder("prism.reasoning.step.duration").ofLongs().setUnit("ms").build();
+                .histogramBuilder("prism.step.duration").ofLongs().setUnit("ms").build();
     }
 
     @Override

@@ -59,18 +59,18 @@ InvestigationRequest  (alert · free-text query · metric anomaly)
          │
          ▼
     model decides next step 
-      ▲ │
-      │ ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
-      │ ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
-      │ ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
-      │ ├─ SearchTraces(TraceQL, win)   → Tempo HTTP API ───────┤
-      │ ├─ List{Log,Trace}…Values       → schema value lookup ──┼─┐
-      │ └─ SearchPastInvestigations(q)  → pgvector memory ──────┘ │   
-      │      │                                   record Signal ◀──┘
-      │      └──────▶ Conclusion?
+      ▲    │
+      │    ├─ QueryMetrics(PromQL, window) → Prometheus HTTP API ──┐
+      │    ├─ SearchLogs(LogQL, window)    → Loki HTTP API ────────┤
+      │    ├─ GetTrace(traceId)            → Tempo HTTP API ───────┤
+      │    ├─ SearchTraces(TraceQL, win)   → Tempo HTTP API ───────┤
+      │  ┌─┼─ List{Log,Trace}…Values       → schema value lookup ──┼─┐
+      │  │ └─ SearchPastInvestigations(q)  → pgvector memory ──────┘ │
+      │  │                                                           │
+      │  └──────▶ Conclusion?                       record Signal ◀──┘
       │                    │
-      └ No, then loop ◀────┴────▶  Yes 
-                                    │ done
+      └ No, then loop ◀────┴────▶  Yes, done
+                                    │
                                     ▼
     Finding  (root cause · supporting evidence · recommended action)
 ```
@@ -112,7 +112,7 @@ Every completed investigation is embedded and stored in pgvector. When a similar
 
 prism.ai instruments itself with **OpenTelemetry** — the single telemetry façade — and exports its own traces, logs and metrics (OTLP) to the very stack it investigates: Tempo, Prometheus and Loki. The OpenTelemetry Spring Boot starter provides the SDK, auto-instrumentation (HTTP server, JDBC) and log↔trace correlation; custom spans are created through the OpenTelemetry API in `Observed*` decorators that wrap the ports, so the domain stays instrumentation-free. Because the loop runs asynchronously off the request thread, each investigation is its **own** trace — a `prism.investigation` root span with a `prism.reasoning.step` child per model decision (tagged with the model that answered), `prism.telemetry.query` children for the Loki/Prometheus/Tempo calls, and `prism.embedding` for memory — so a whole investigation is laid out as one tree, cross-linked to its `POST /investigations` request trace by a span link and a shared `investigation.id`. Per-stage duration histograms (`prism.*.duration`, tagged by outcome / step kind / backend) are exported alongside, and each `prism.reasoning.step` records the model id — so you can see which model is slow, failing, or meandering. The running build is identifiable too: the git commit is logged at startup and exposed at `/actuator/info`.
 
-Agent-quality evaluation via [Langfuse](https://langfuse.com) — scoring each investigation's reasoning — is planned for a later phase.
+Every investigation also streams to [**Langfuse**](https://langfuse.com) for agent evaluation. The same OTLP traces are fanned out **at the collector** (the app exports once and stays unaware), so each investigation becomes one Langfuse trace and every model call a `prism.reasoning.llm` *generation* carrying OpenTelemetry GenAI attributes — model id and token usage — from which Langfuse derives **cost**. Low-confidence conclusions are flagged (span attribute + a `prism.investigation.concluded` counter by confidence + a WARN log), and a provisioned Grafana dashboard (`scripts/grafana-dashboard-prism.json`) shows outcome mix, p95 time-to-conclusion, tool-call distribution, confidence mix and token usage. LLM-as-judge quality scoring on top of these traces is the next step.
 
 
 ## 🚀 Getting Started
@@ -157,6 +157,7 @@ Services after startup:
 | MCP interface | MCP Java SDK — Streamable HTTP transport |
 | Application | Java 25 · Maven · Spring Boot 4 |
 | Self-observability | OpenTelemetry (traces + logs) · Micrometer metrics · OTLP → its own Tempo · Prometheus · Loki |
+| Agent evaluation | Langfuse Cloud — investigation traces fanned out at the collector; token usage → cost |
 
 
 ---
